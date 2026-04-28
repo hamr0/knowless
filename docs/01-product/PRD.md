@@ -2320,12 +2320,12 @@ is missing the defense.
 - **AF-4.3:** CSRF Origin-header validation on `POST /login` (closes AF-2.2; resolves SPEC §15 Q-4). SPEC §7.3 Step 0.
 - **AF-4.4:** `cookieSecure` config option (closes AF-2.3). SPEC §5.4. FR-30 revised.
 
-**P2 — nice to have:**
+**P2 — shipped in v0.1.2:**
 
-- **AF-5.1:** Rate-limit window-boundary precision test (closes AF-1.6).
-- **AF-5.2:** Cookie parser hardening + boundary tests (closes AF-2.4).
-- **AF-5.3:** Sweeper-failure alerting hook (closes AF-2.6).
-- **AF-5.4:** Stored-handle integrity check (closes AF-2.5).
+- **AF-5.1:** Rate-limit window-boundary precision test (closes AF-1.6). ✓
+- **AF-5.2:** Cookie parser hardening + boundary tests (closes AF-2.4). ✓
+- **AF-5.3:** Sweeper-failure alerting hook (closes AF-2.6). ✓
+- **AF-5.4:** Stored-handle integrity check (closes AF-2.5). ✓
 
 ### 17.4 Note on FR-6 timing test (AF-1.8)
 

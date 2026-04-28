@@ -15,6 +15,37 @@ Versioning is [SemVer](https://semver.org/).
   sham mail, SPF/DKIM/PTR, reverse-proxy configs for Caddy / nginx /
   Traefik). (Tracked in TASKS.md Phase 7.)
 
+## [0.1.2] — 2026-04-28
+
+P2 hardening sprint — completes the audit-finding backlog opened during
+the v0.1.0 self-review. Defense-in-depth and test-strength improvements;
+no behavior changes for correct callers.
+
+### Added
+
+- `onSweepError(err)` config hook — invoked when the periodic sweeper
+  catches an exception (DB corruption, disk full, etc.). Best-effort:
+  hook errors are swallowed and the sweeper keeps running. `auth._sweep()`
+  is now exposed for tests and operator scripts to trigger a sweep on
+  demand. Closes AF-5.3.
+
+### Security
+
+- **Stored-hash integrity check.** All `handle` / `tokenHash` / `sidHash`
+  arguments are validated as 64-char lowercase hex at the store boundary
+  before any DB read or write. A bug elsewhere passing a wrong-format
+  value now fails fast with an actionable error instead of silently
+  corrupting the table. Closes AF-5.4.
+
+### Tests
+
+- Rate-limit window-boundary precision: last ms of window N is still
+  limited; first ms of N+1 is fresh. Limit semantics: "exceeded" fires
+  AT the limit, not strictly above. Closes AF-5.1.
+- Cookie parser hardening: 8 edge-case scenarios (whitespace,
+  duplicates, malformed pairs, RFC 6265 cases) verifying the existing
+  parser is robust. Closes AF-5.2.
+
 ## [0.1.1] — 2026-04-29
 
 First-customer scope (the webrevival forum) review identified one
