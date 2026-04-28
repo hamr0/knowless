@@ -76,6 +76,16 @@ export function knowless(options = {}) {
     throw new Error('knowless: secret must be at least 64 hex chars (32 bytes)');
   }
 
+  // SPEC §5.4: cookieSecure: false is allowed only for localhost dev.
+  // The library can't tell whether the operator is in production, but a
+  // visible warning makes it harder to ship by accident.
+  if (options.cookieSecure === false) {
+    console.warn(
+      '[knowless] WARNING: cookieSecure is false. Session cookies will be set without the Secure flag. ' +
+        'This is only safe for http://localhost development. Never deploy with cookieSecure: false.',
+    );
+  }
+
   const store = options.store ?? createStore(options.dbPath ?? './knowless.db');
 
   const mailer =

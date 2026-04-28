@@ -32,6 +32,7 @@ const DEFAULTS = {
   shamRecipient: 'null@knowless.invalid',
   trustedProxies: ['127.0.0.1', '::1', '::ffff:127.0.0.1'],
   failureRedirect: null,
+  cookieSecure: true,
 };
 
 /**
@@ -146,6 +147,12 @@ export function createHandlers({ store, mailer, config }) {
   }
 
   const trustedProxies = new Set(cfg.trustedProxies);
+
+  // SPEC §5.4 / FR-30: build the cookie-attribute suffix once. Secure is
+  // emitted by default and omitted only when cookieSecure: false (localhost
+  // dev). HttpOnly + SameSite=Lax are always set.
+  const secureAttr = cfg.cookieSecure ? '; Secure' : '';
+  const setCookieAttrs = `Domain=${cfg.cookieDomain}; Path=/; HttpOnly; SameSite=Lax`;
 
   function sameResponse(res, echoedEmail, next) {
     const html = renderLoginForm({
@@ -312,7 +319,7 @@ export function createHandlers({ store, mailer, config }) {
     res.statusCode = 302;
     res.setHeader(
       'Set-Cookie',
-      `${cfg.cookieName}=${cookie}; Domain=${cfg.cookieDomain}; Path=/; Max-Age=${cfg.sessionTtlSeconds}; Secure; HttpOnly; SameSite=Lax`,
+      `${cfg.cookieName}=${cookie}; ${setCookieAttrs}; Max-Age=${cfg.sessionTtlSeconds}${secureAttr}`,
     );
     res.setHeader('Location', row.nextUrl ?? `${cfg.baseUrl}/`);
     res.end();
@@ -360,7 +367,7 @@ export function createHandlers({ store, mailer, config }) {
     res.statusCode = 200;
     res.setHeader(
       'Set-Cookie',
-      `${cfg.cookieName}=; Domain=${cfg.cookieDomain}; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`,
+      `${cfg.cookieName}=; ${setCookieAttrs}; Max-Age=0${secureAttr}`,
     );
     res.end();
   }

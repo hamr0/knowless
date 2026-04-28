@@ -321,6 +321,54 @@ test('handleFromRequest: returns null when session row is expired (AF-2.8 + AF-1
   h.close();
 });
 
+test('cookieSecure=true (default): callback emits Secure flag (closes AF-4.4)', async () => {
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  await postLogin(h.handlers, formBody({ email: REGISTERED }));
+  const token = extractToken(h.sentMail[0].raw);
+  const cbRes = await getCallback(h.handlers, token);
+  const setCookie = cbRes._setCookies[0];
+  assert.match(setCookie, /;\s*Secure/);
+  assert.match(setCookie, /HttpOnly/);
+  assert.match(setCookie, /SameSite=Lax/);
+  h.close();
+});
+
+test('cookieSecure=false: callback omits Secure (localhost dev) (AF-4.4)', async () => {
+  const h = newHarness({ cookieSecure: false });
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  await postLogin(h.handlers, formBody({ email: REGISTERED }));
+  const token = extractToken(h.sentMail[0].raw);
+  const cbRes = await getCallback(h.handlers, token);
+  const setCookie = cbRes._setCookies[0];
+  // No Secure (the only word that should be missing)
+  assert.equal(/;\s*Secure/.test(setCookie), false);
+  // HttpOnly + SameSite remain — those are always-on
+  assert.match(setCookie, /HttpOnly/);
+  assert.match(setCookie, /SameSite=Lax/);
+  h.close();
+});
+
+test('cookieSecure=false: logout-clear cookie also omits Secure (AF-4.4)', async () => {
+  const h = newHarness({ cookieSecure: false });
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  await postLogin(h.handlers, formBody({ email: REGISTERED }));
+  const token = extractToken(h.sentMail[0].raw);
+  const cbRes = await getCallback(h.handlers, token);
+  const cookie = parseSetCookie(cbRes._setCookies[0]);
+
+  const logoutReq = fakeReq({
+    method: 'POST',
+    url: '/logout',
+    headers: { cookie: `knowless_session=${cookie.value}` },
+  });
+  const logoutRes = fakeRes();
+  await h.handlers.logout(logoutReq, logoutRes);
+  const cleared = logoutRes._setCookies[0];
+  assert.equal(/;\s*Secure/.test(cleared), false);
+  h.close();
+});
+
 test('login form GET: renders the bare form with hidden next', () => {
   const h = newHarness();
   const req = fakeReq({ url: '/login?next=https://kuma.app.example.com/dash' });
