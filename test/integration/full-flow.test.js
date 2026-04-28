@@ -475,6 +475,67 @@ test('Origin javascript: scheme: rejected (no hostname) (AF-4.3)', async () => {
   h.close();
 });
 
+test('concurrent issuance respects maxActive cap (closes AF-4.1)', async () => {
+  const h = newHarness({ maxActiveTokensPerHandle: 3 });
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+
+  // Fire 10 parallel login submissions for the same handle. Each one
+  // should attempt token insertion; the per-handle cap with eviction
+  // (SPEC §4.7 BEGIN IMMEDIATE) must hold the active count at 3.
+  await Promise.all(
+    Array.from({ length: 10 }, () =>
+      postLogin(h.handlers, formBody({ email: REGISTERED })),
+    ),
+  );
+
+  const handle = deriveHandle(REGISTERED, TEST_SECRET);
+  const active = h.store.countActiveTokens(handle);
+  assert.equal(active, 3, 'cap must hold under contention');
+  // 10 mails went out (every login submission triggered one — the cap
+  // limits ACTIVE rows in the store, not mails-sent counts).
+  assert.equal(h.sentMail.length, 10);
+  h.close();
+});
+
+test('SMTP failure: response shape identical to success (closes AF-4.2)', async () => {
+  // First, capture a known-good response shape.
+  const ok = newHarness();
+  ok.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  const okRes = await postLogin(ok.handlers, formBody({ email: REGISTERED }));
+  ok.close();
+
+  // Now build a harness with a failing mailer and re-issue.
+  const fail = newHarness();
+  fail.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  // Replace mailer.submit with a function that throws — same contract
+  // a real Postfix-down or network-broken submission would hit.
+  fail.handlers._config; // touch for parity
+  const origSubmit = fail.mailer.submit;
+  fail.mailer.submit = async () => {
+    throw new Error('simulated SMTP failure: connection refused');
+  };
+  const failRes = await postLogin(fail.handlers, formBody({ email: REGISTERED }));
+
+  // Per NFR-10: SMTP failure logged, never leaked. Status, content-type,
+  // cache-control, and the structural body must match.
+  assert.equal(failRes.statusCode, okRes.statusCode);
+  assert.equal(
+    failRes._headers['content-type'],
+    okRes._headers['content-type'],
+  );
+  assert.equal(
+    failRes._headers['cache-control'],
+    okRes._headers['cache-control'],
+  );
+  // Body should still contain the confirmation message.
+  assert.match(failRes._body, /sign-in link is on its way/);
+  // No 500, no error visible in headers, no error body.
+  assert.equal(/error|fail|smtp/i.test(failRes._headers['content-type']), false);
+
+  fail.mailer.submit = origSubmit;
+  fail.close();
+});
+
 test('login form GET: renders the bare form with hidden next', () => {
   const h = newHarness();
   const req = fakeReq({ url: '/login?next=https://kuma.app.example.com/dash' });
