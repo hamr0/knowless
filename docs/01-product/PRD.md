@@ -1,6 +1,6 @@
 # knowless — Product Requirements Document (PRD)
 
-**Status:** Draft v0.11 (post-POC, pre-SPEC)
+**Status:** Draft v0.12 (post-SPEC-v0.1)
 **Owner:** hamr0
 **Last updated:** 2026-04-21
 
@@ -160,6 +160,20 @@
 >    recovery path gets the broken form. Forcing 7bit + ASCII +
 >    standalone URL line avoids the problem entirely. FR-17 now
 >    requires 7bit; quoted-printable is forbidden.
+>
+> **v0.12 update:** FR-27a (forward-auth return URL) rewritten to
+> be mechanism-agnostic. Earlier wording prescribed
+> "HMAC-sign the `next` value... embed in the magic link itself,"
+> which is one valid implementation but not the only one.
+> SPEC.md §11 specifies a simpler DB-bound mechanism: the
+> validated `next` URL is stored on the token row and read back
+> at redemption, so the magic link URL stays short (no extra
+> query params beyond `?t=`) and tampering is prevented by the
+> token's opacity rather than a separate signature. The PRD
+> contract — "validated at receipt, bound to the token,
+> surviving the round-trip, untamperable except by the token
+> holder" — is unchanged; only the mechanism is. Future SPEC
+> revisions MAY change mechanism without re-amending the PRD.
 
 ---
 
@@ -820,27 +834,38 @@ login flow, the library MUST validate it against the configured
 cookie domain (whitelist check) before redirecting after auth, to
 prevent open-redirect vulnerabilities.
 
-**FR-27a. Forward-auth return URL via signed `next` parameter.**
-When a request arrives at `/login` with a `?next=<url>` query
-parameter (typical for forward-auth deployments where the reverse
-proxy redirects unauthenticated requests), the library MUST:
+**FR-27a. Forward-auth return URL (revised v0.12).** When a
+request arrives at `/login` with a `?next=<url>` query parameter
+(typical for forward-auth deployments where the reverse proxy
+redirects unauthenticated requests), the library MUST:
 
-1. HMAC-sign the `next` value using the operator secret and embed
-   the signed pair (URL + signature) in the magic link itself, so
-   the destination survives the email round-trip.
-2. On `callbackHandler` redemption, verify the signature using
-   `node:crypto.timingSafeEqual`, validate the URL against the
-   configured `cookieDomain` whitelist (per FR-27), and redirect
-   there after setting the session cookie.
-3. On signature mismatch, expired-with-token signatures, or
-   domain-whitelist failure, redirect to the configured default
-   destination (or `/` if none). MUST NOT surface the validation
-   failure to the user as a distinct error.
+1. **Validate at receipt.** The `next` URL MUST be validated
+   against the configured `cookieDomain` whitelist (per FR-27)
+   *before* any token is issued. Whitelist failure: silently
+   drop the `next` (the login flow proceeds without it; user
+   ends up at the default destination).
+2. **Bind to the token.** The validated URL MUST be bound to
+   the magic-link token such that the destination survives the
+   email round-trip and cannot be tampered with by anyone except
+   the holder of the token.
+3. **Redirect on redemption.** On `callbackHandler` redemption,
+   the library MUST redirect to the bound URL after setting the
+   session cookie. If no `next` was provided or it failed
+   validation, redirect to the configured default destination
+   (or `/` if none).
 
-The signature prevents an attacker from substituting their own
-destination URL into someone else's login flow. Combined with the
-cookie-domain whitelist, this closes the open-redirect surface for
-the forward-auth deployment shape (Pattern B in §9.1).
+The mechanism by which "bind to the token" is achieved is a
+SPEC-level decision (signed-in-URL, DB-bound row, or
+otherwise). SPEC.md §11 currently specifies DB-bound: the
+validated URL is stored on the token row and read back on
+redemption, keeping the magic link URL short (per FR-17) and
+relying on the token's opacity for tamper-resistance.
+
+This bridges forward-auth's "user requested
+kuma.example.com" and post-login's "send the user to
+kuma.example.com." The PRD contract is the four properties
+above (validated at receipt, bound, surviving round-trip,
+untamperable). Implementation mechanism is SPEC's job.
 
 ### 7.8 Forward-auth and session
 
@@ -2199,7 +2224,7 @@ conversation between the user (hamr0) and Claude. Items were
 explicitly debated and either added to scope or moved to non-goals
 with documented reasoning.
 
-**Confirmed scope as of v0.11 of this PRD:**
+**Confirmed scope as of v0.12 of this PRD:**
 
 - Full opinionated library (not primitives kit) ✓
 - Six-line operator integration in library mode ✓
