@@ -369,6 +369,112 @@ test('cookieSecure=false: logout-clear cookie also omits Secure (AF-4.4)', async
   h.close();
 });
 
+async function postLoginWithOrigin(handlers, body, origin) {
+  const headers = {
+    'content-type': 'application/x-www-form-urlencoded',
+  };
+  if (origin) headers.origin = origin;
+  const req = fakeReq({ method: 'POST', url: '/login', headers, body });
+  const res = fakeRes();
+  await handlers.login(req, res);
+  return res;
+}
+
+test('Origin absent: allowed (curl/programmatic) (closes AF-4.3)', async () => {
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  // No Origin header → ALLOW. Mail goes out.
+  await postLoginWithOrigin(h.handlers, formBody({ email: REGISTERED }), null);
+  assert.equal(h.sentMail.length, 1);
+  h.close();
+});
+
+test('Origin same-domain: allowed (AF-4.3)', async () => {
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  await postLoginWithOrigin(
+    h.handlers,
+    formBody({ email: REGISTERED }),
+    'https://app.example.com',
+  );
+  assert.equal(h.sentMail.length, 1);
+  h.close();
+});
+
+test('Origin subdomain of cookieDomain: allowed (AF-4.3)', async () => {
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  await postLoginWithOrigin(
+    h.handlers,
+    formBody({ email: REGISTERED }),
+    'https://kuma.app.example.com',
+  );
+  assert.equal(h.sentMail.length, 1);
+  h.close();
+});
+
+test('Origin cross-domain: rejected silently (AF-4.3)', async () => {
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  // Foreign Origin: short-circuit before any DB write or mail send.
+  const handle = deriveHandle(REGISTERED, TEST_SECRET);
+  const beforeTokens = h.store.countActiveTokens(handle);
+  const res = await postLoginWithOrigin(
+    h.handlers,
+    formBody({ email: REGISTERED }),
+    'https://evil.example.org',
+  );
+  // Same response shape as a legitimate request — no signal to attacker.
+  assert.equal(res.statusCode, 200);
+  assert.match(res._headers['content-type'], /text\/html/);
+  // No DB write, no mail.
+  assert.equal(h.store.countActiveTokens(handle), beforeTokens);
+  assert.equal(h.sentMail.length, 0);
+  h.close();
+});
+
+test('Referer fallback when Origin absent: cross-domain rejected (AF-4.3)', async () => {
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  const req = fakeReq({
+    method: 'POST',
+    url: '/login',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      referer: 'https://evil.example.org/some/page',
+    },
+    body: formBody({ email: REGISTERED }),
+  });
+  const res = fakeRes();
+  await h.handlers.login(req, res);
+  assert.equal(h.sentMail.length, 0);
+  h.close();
+});
+
+test('Origin malformed: rejected (AF-4.3)', async () => {
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  await postLoginWithOrigin(
+    h.handlers,
+    formBody({ email: REGISTERED }),
+    'not-a-url',
+  );
+  assert.equal(h.sentMail.length, 0);
+  h.close();
+});
+
+test('Origin javascript: scheme: rejected (no hostname) (AF-4.3)', async () => {
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  await postLoginWithOrigin(
+    h.handlers,
+    formBody({ email: REGISTERED }),
+    'javascript:alert(1)',
+  );
+  assert.equal(h.sentMail.length, 0);
+  h.close();
+});
+
 test('login form GET: renders the bare form with hidden next', () => {
   const h = newHarness();
   const req = fakeReq({ url: '/login?next=https://kuma.app.example.com/dash' });

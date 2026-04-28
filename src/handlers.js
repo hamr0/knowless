@@ -86,6 +86,38 @@ function getCookie(req, name) {
 }
 
 /**
+ * Validate the request's Origin/Referer header against the cookie
+ * domain whitelist per SPEC §7.3 Step 0 (AF-4.3, CSRF defense).
+ *
+ * - Both headers absent → allow (curl, fetch without CORS, programmatic
+ *   clients). Browsers always send Origin on cross-origin POST.
+ * - Either present → parse and require host == cookieDomain or
+ *   .endsWith('.' + cookieDomain). Same whitelist as the next-URL
+ *   check in §11.2.
+ * - Unparseable URL or non-matching host → reject.
+ *
+ * Origin is preferred when both are present (it's harder to spoof and
+ * more reliably set by browsers on POST).
+ */
+function validateOrigin(req, cookieDomain) {
+  const origin = req.headers?.origin;
+  const referer = req.headers?.referer ?? req.headers?.referrer;
+  const candidate = origin ?? referer;
+  if (!candidate) return true;
+  if (typeof candidate !== 'string') return false;
+  let parsed;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    return false;
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (!host) return false;
+  const dom = cookieDomain.toLowerCase();
+  return host === dom || host.endsWith('.' + dom);
+}
+
+/**
  * Validate the `next` URL per SPEC §11.2.
  * @param {string|null|undefined} rawNext
  * @param {string} baseUrl
@@ -175,6 +207,15 @@ export function createHandlers({ store, mailer, config }) {
   }
 
   async function login(req, res) {
+    // Step 0 — Origin / Referer validation (SPEC §7.3 Step 0, AF-4.3).
+    // CSRF defense: a malicious cross-origin page autosubmitting to /login
+    // would otherwise trigger magic-link sends to known emails. Exempt
+    // from FR-6 timing equivalence per SPEC §7.3.
+    if (!validateOrigin(req, cfg.cookieDomain)) {
+      sameResponse(res, '', '');
+      return;
+    }
+
     let raw;
     try {
       raw = await readBody(req);
