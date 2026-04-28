@@ -536,6 +536,86 @@ test('SMTP failure: response shape identical to success (closes AF-4.2)', async 
   fail.close();
 });
 
+test('cookie parser: edge cases all behave correctly (closes AF-5.2)', async () => {
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  await postLogin(h.handlers, formBody({ email: REGISTERED }));
+  const token = extractToken(h.sentMail[0].raw);
+  const cbRes = await getCallback(h.handlers, token);
+  const cookie = parseSetCookie(cbRes._setCookies[0]);
+  const v = cookie.value;
+
+  // Baseline: bare cookie works.
+  assert.ok(
+    h.handlers.handleFromRequest(
+      fakeReq({ headers: { cookie: `knowless_session=${v}` } }),
+    ),
+  );
+
+  // Extra surrounding whitespace and trailing semicolon.
+  assert.ok(
+    h.handlers.handleFromRequest(
+      fakeReq({ headers: { cookie: `  knowless_session=${v}  ;` } }),
+    ),
+  );
+
+  // Cookie at non-first position — must still be found.
+  assert.ok(
+    h.handlers.handleFromRequest(
+      fakeReq({
+        headers: { cookie: `other=foo; knowless_session=${v}; another=bar` },
+      }),
+    ),
+  );
+
+  // Duplicate cookie names — first occurrence wins per RFC 6265 §5.3.
+  // Second is junk; first is the valid one.
+  assert.ok(
+    h.handlers.handleFromRequest(
+      fakeReq({
+        headers: { cookie: `knowless_session=${v}; knowless_session=garbage` },
+      }),
+    ),
+  );
+
+  // Name confusion: 'knowless_session_extra' MUST NOT match 'knowless_session'.
+  assert.equal(
+    h.handlers.handleFromRequest(
+      fakeReq({
+        headers: { cookie: `knowless_session_extra=${v}` },
+      }),
+    ),
+    null,
+  );
+
+  // Empty value: 'knowless_session=' returns the empty string, which
+  // verifySessionSignature rejects (no dot found).
+  assert.equal(
+    h.handlers.handleFromRequest(
+      fakeReq({ headers: { cookie: 'knowless_session=' } }),
+    ),
+    null,
+  );
+
+  // Cookie part with no '=': skip and continue.
+  assert.ok(
+    h.handlers.handleFromRequest(
+      fakeReq({
+        headers: { cookie: `bare-token; knowless_session=${v}` },
+      }),
+    ),
+  );
+
+  // Cookie with just '=value' (empty name): skip.
+  assert.equal(
+    h.handlers.handleFromRequest(
+      fakeReq({ headers: { cookie: `=garbage; other=foo` } })
+    ),
+    null,
+  );
+  h.close();
+});
+
 test('login form GET: renders the bare form with hidden next', () => {
   const h = newHarness();
   const req = fakeReq({ url: '/login?next=https://kuma.app.example.com/dash' });
