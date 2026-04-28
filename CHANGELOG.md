@@ -15,6 +15,54 @@ Versioning is [SemVer](https://semver.org/).
   sham mail, SPF/DKIM/PTR, reverse-proxy configs for Caddy / nginx /
   Traefik). (Tracked in TASKS.md Phase 7.)
 
+## [0.1.1] — 2026-04-29
+
+First-customer scope (the webrevival forum) review identified one
+ergonomic gap and elevated three P1 hardening items to "must ship
+before first real use." All five closed in this release.
+
+### Added
+
+- `auth.handleFromRequest(req)` — programmatic session resolution
+  for in-process middleware. Returns `string | null` (handle on
+  valid session, null on any failure). Recommended integration
+  point for Express / Fastify / Hono `requireAuth` middleware. SPEC
+  §9.4. Closes AF-2.8.
+- `cookieSecure` config option (default `true`). Operators MAY set
+  `false` for `http://localhost` development; the library emits a
+  stderr warning at startup. MUST NOT be `false` in production.
+  SPEC §5.4. PRD FR-30 revised. Closes AF-4.4.
+
+### Security
+
+- **CSRF defense on `POST /login`.** New Origin/Referer header
+  validation as Step 0 of the login flow. Both headers absent →
+  allow (curl, programmatic). Either present → host must equal
+  `cookieDomain` or be a subdomain. Cross-origin / unparseable →
+  silent short-circuit, no DB write, no mail. Same response shape
+  as a legitimate hit, so the attacker's measurement learns
+  nothing the request shape didn't already expose. SPEC §7.3 Step
+  0. Closes AF-4.3, resolves SPEC §15 Q-4.
+
+### Tests
+
+- AF-4.1: concurrent token issuance under cap contention.
+  10-parallel logins with `maxActiveTokensPerHandle=3` must end at
+  exactly 3 active rows. Pins the SPEC §4.7 BEGIN IMMEDIATE
+  contract.
+- AF-4.2: SMTP-failure response-uniformity test. Stubs
+  `mailer.submit` to throw and asserts the response shape is
+  identical to a successful login. Pins NFR-10.
+- 12 new tests total. 122 tests passing on Node 20+.
+
+### Notes
+
+The published `0.1.0` does not have these. Adopters who installed
+`0.1.0` should `npm update knowless` to pick up the CSRF defense
+and the localhost-dev-friendly cookieSecure option.
+
+[0.1.1]: https://github.com/hamr0/knowless/releases/tag/v0.1.1
+
 ## [0.1.0] — 2026-04-28
 
 First public release. Library-mode auth flow is complete and
@@ -138,5 +186,5 @@ Two primary audiences (PRD §4):
 
 Apache 2.0 with NOTICE preservation. See `LICENSE` and `NOTICE`.
 
-[Unreleased]: https://github.com/hamr0/knowless/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/hamr0/knowless/compare/v0.1.1...HEAD
 [0.1.0]: https://github.com/hamr0/knowless/releases/tag/v0.1.0
