@@ -74,3 +74,16 @@ test('deriveHandle: same normalized email from different surface forms gives sam
   const b = deriveHandle(normalize('  alice@example.com  '), SECRET);
   assert.equal(a, b);
 });
+
+test('deriveHandle: known vector pins HMAC-SHA256 (closes AF-1.1)', () => {
+  // Vector computed externally:
+  //   $ node -e "console.log(crypto.createHmac('sha256', 'a'.repeat(64)) \\
+  //              .update('alice@example.com').digest('hex'))"
+  // A broken impl (different algorithm, different encoding, missing key,
+  // SHA-1 instead of SHA-256, no HMAC at all) would fail this assertion
+  // even if all the determinism tests above still pass.
+  assert.equal(
+    deriveHandle('alice@example.com', 'a'.repeat(64)),
+    '5b32f1b41887a522ebbae17345eb5721fd2cd49da979576670f09417d79bcc82',
+  );
+});

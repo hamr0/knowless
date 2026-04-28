@@ -92,3 +92,23 @@ test('verifySessionSignature: empty sid before dot -> null', () => {
   const fakeSig = 'a'.repeat(64);
   assert.equal(verifySessionSignature('.' + fakeSig, SECRET), null);
 });
+
+test('signSession: known vector pins HMAC-SHA256 + sess\\0 domain tag (closes AF-1.2)', () => {
+  // Vector computed externally:
+  //   const tag = Buffer.from('sess\x00');
+  //   const h = crypto.createHmac('sha256', 'a'.repeat(64));
+  //   h.update(tag);
+  //   h.update('A'.repeat(43), 'utf8');
+  //   h.digest('hex')  // -> 7d394fde...
+  //
+  // A broken impl (SHA-1 instead of SHA-256, missing tag, wrong tag bytes,
+  // tag appended instead of prepended, signing the decoded sid bytes
+  // instead of the base64url string) would fail this even if all the
+  // round-trip and tamper tests above still pass.
+  const cookie = signSession('A'.repeat(43), 'a'.repeat(64));
+  assert.equal(
+    cookie,
+    'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.' +
+      '7d394fde31d230ad8efa52cde7a783b0258b236eaa592a655f9b7f93d92c5e5b',
+  );
+});

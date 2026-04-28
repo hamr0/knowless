@@ -134,3 +134,35 @@ test('mailer: refuses non-ASCII body (defence-in-depth on operator override)', a
   );
   mailer.close();
 });
+
+test('mailer: rejects CR/LF in to/from/subject — header-injection defense (closes AF-2.1)', async () => {
+  const { mailer } = newCapturingMailer();
+  // Newline-in-to: classic header injection attempt.
+  await assert.rejects(
+    mailer.submit({
+      to: 'alice@example.com\r\nBcc: attacker@evil.com',
+      subject: 'Sign in',
+      body: 'plain ascii',
+    }),
+    /header injection/,
+  );
+  // Bare \n is also dangerous (some MTAs accept it as line terminator).
+  await assert.rejects(
+    mailer.submit({
+      to: 'alice@example.com\nBcc: attacker@evil.com',
+      subject: 'Sign in',
+      body: 'plain ascii',
+    }),
+    /header injection/,
+  );
+  // Subject with embedded newline — could inject body separator.
+  await assert.rejects(
+    mailer.submit({
+      to: 'alice@example.com',
+      subject: 'Sign in\r\n\r\nFake body',
+      body: 'plain ascii',
+    }),
+    /header injection/,
+  );
+  mailer.close();
+});

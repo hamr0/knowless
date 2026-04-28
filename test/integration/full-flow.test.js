@@ -172,6 +172,80 @@ test('login response: same shape (200 OK text/html) for hit and miss', async () 
   h.close();
 });
 
+test('concurrent redemption: exactly one of N parallel callbacks wins (closes AF-1.4)', async () => {
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  await postLogin(h.handlers, formBody({ email: REGISTERED }));
+  const token = extractToken(h.sentMail[0].raw);
+
+  // Fire 8 callback redemptions in parallel. better-sqlite3 is
+  // synchronous so JavaScript runs them serially — but we still
+  // assert the contract: markTokenUsed's atomic transition means
+  // exactly one redemption sees usedAt=NULL and creates a session;
+  // the rest see usedAt != NULL and redirect to /login.
+  //
+  // If anyone changes the order of the dual checks (read-side
+  // `row.usedAt != null` AND write-side `markTokenUsed` returns
+  // false on already-used) such that a race window opens, this
+  // test catches it under any future async path the callback
+  // might gain (e.g., if we ever made store calls async).
+  const results = await Promise.all(
+    Array.from({ length: 8 }, () => getCallback(h.handlers, token)),
+  );
+
+  const wins = results.filter((r) => r._setCookies.length === 1);
+  const losses = results.filter((r) => r._setCookies.length === 0);
+
+  assert.equal(wins.length, 1, 'exactly one redemption must succeed');
+  assert.equal(losses.length, 7, 'all other redemptions must fail silently');
+
+  // Loser shape: 302 to /login, no cookie (same as expired/never-existed)
+  for (const loss of losses) {
+    assert.equal(loss.statusCode, 302);
+    assert.equal(loss._headers['location'], '/login');
+  }
+
+  // Winner shape: 302 with cookie set
+  assert.equal(wins[0].statusCode, 302);
+  h.close();
+});
+
+test('expired session: verify returns 401 (closes AF-1.3)', async () => {
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  await postLogin(h.handlers, formBody({ email: REGISTERED }));
+  const token = extractToken(h.sentMail[0].raw);
+  const cbRes = await getCallback(h.handlers, token);
+  const cookie = parseSetCookie(cbRes._setCookies[0]);
+
+  // Sanity: the cookie works right now
+  assert.equal(getVerify(h.handlers, cookie.value).statusCode, 200);
+
+  // Force-expire the session row by rewriting expires_at to the past.
+  // SPEC §9 verify path checks `expiresAt <= now()`; this is the branch
+  // we need to exercise but never could with a freshly-created session.
+  const allSessions = h.store.sweepSessions(0); // no-op count read
+  void allSessions;
+  // Use the underlying DB by manually opening a row and updating.
+  // The store doesn't expose a mutate-expiry method (and shouldn't —
+  // it's a test concern); we go through the only exposed knob: delete
+  // and re-insert with a past expiry.
+  // The handle is the same as derived; sid_hash is opaque, so we
+  // recompute it from the cookie value.
+  const sid = cookie.value.split('.')[0];
+  const crypto = await import('node:crypto');
+  const sidHash = crypto
+    .createHash('sha256')
+    .update(Buffer.from(sid, 'base64url'))
+    .digest('hex');
+  h.store.deleteSession(sidHash);
+  h.store.insertSession(sidHash, deriveHandle(REGISTERED, TEST_SECRET), Date.now() - 1000);
+
+  // Now the verify path's expiry branch should fire.
+  assert.equal(getVerify(h.handlers, cookie.value).statusCode, 401);
+  h.close();
+});
+
 test('login form GET: renders the bare form with hidden next', () => {
   const h = newHarness();
   const req = fakeReq({ url: '/login?next=https://kuma.app.example.com/dash' });

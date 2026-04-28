@@ -19,6 +19,22 @@ const ASCII_RE = /^[\x00-\x7f]*$/;
  * @returns {string} RFC822 message with CRLF line endings
  */
 function composeRaw({ from, to, subject, body }) {
+  // AF-2.1: header-injection defense in depth. normalize() upstream
+  // already rejects \r and \n in email addresses, but the mailer
+  // shouldn't trust its callers — this is the layer that emits the
+  // wire-format bytes, so it owns the invariant.
+  for (const [name, value] of [
+    ['from', from],
+    ['to', to],
+    ['subject', subject],
+  ]) {
+    if (typeof value !== 'string') {
+      throw new Error(`mailer: ${name} must be a string`);
+    }
+    if (/[\r\n]/.test(value)) {
+      throw new Error(`mailer: ${name} contains CR/LF — header injection blocked`);
+    }
+  }
   const fromDomain = from.includes('@') ? from.split('@').pop() : 'localhost';
   const messageId = `<${crypto.randomUUID()}@${fromDomain}>`;
   const date = new Date().toUTCString();

@@ -1,6 +1,6 @@
 # knowless — Product Requirements Document (PRD)
 
-**Status:** Draft v0.12 (post-SPEC-v0.1)
+**Status:** Draft v0.13 (post-Phase-5-audit)
 **Owner:** hamr0
 **Last updated:** 2026-04-21
 
@@ -174,6 +174,17 @@
 > surviving the round-trip, untamperable except by the token
 > holder" — is unchanged; only the mechanism is. Future SPEC
 > revisions MAY change mechanism without re-amending the PRD.
+>
+> **v0.13 update:** Post-Phase-5 self-audit surfaced gaps
+> between "tests pass" and "tests verify the contract." Several
+> determinism / round-trip tests would pass against broken
+> implementations — they verify "what I sign, I can verify"
+> rather than pinning the algorithm + domain-tag combination.
+> A handful of real concurrency, expiry, and header-injection
+> defenses are also untested. Findings + priority-ranked
+> hardening backlog tracked in §17 (new). v0.13 doesn't change
+> any FR or non-goal — it just makes the v0.1 hardening
+> backlog explicit.
 
 ---
 
@@ -2217,14 +2228,101 @@ Only the timing envelope is narrowed.
 about right-sizing the timing test, not loosening the
 philosophy.
 
-## 17. Approval and sign-off
+## 17. Audit findings (v0.1 hardening backlog)
+
+> Discovered during the Phase 4-5 self-audit triggered by the
+> question "did you really pass all tests or make them pass?"
+> These items distinguish from §13 (open questions deferred
+> by choice) and §14 (non-goals deliberately out of scope).
+> They are gaps between "the implementation passes tests" and
+> "the tests verify the contract" — plus a handful of real
+> defense-in-depth code gaps.
+
+### 17.1 Test-quality findings
+
+Several existing tests would pass against broken
+implementations, because they verify "the function round-trips
+with itself" instead of "the function matches a known
+algorithmic output." This is the AGENT_RULES "tests that
+mirror implementation" anti-pattern.
+
+| ID | What's weak | Why it matters |
+|---|---|---|
+| AF-1.1 | `deriveHandle` determinism + different-input-different-output tests | A broken HMAC (wrong algorithm, missing key, hash other than SHA-256) would still produce deterministic varied output; tests would still pass. |
+| AF-1.2 | Session signature round-trip and tamper-rejection | Substituting SHA-1, omitting the `sess\0` domain tag, or HMAC'ing the wrong byte sequence would still round-trip cleanly inside the library. |
+| AF-1.3 | Session expiry behavior in `verify` handler | No test exercises `expiresAt <= now` rejection; off-by-one or always-true bugs in the expiry check are uncaught. |
+| AF-1.4 | Concurrent token redemption | Replay protection is exercised serially; no test asserts that of N parallel redemptions exactly one wins. |
+| AF-1.5 | Concurrent token issuance under cap | SPEC §4.7 BEGIN IMMEDIATE serialization is asserted by spec but not by test. Cap could be bypassed under contention. |
+| AF-1.6 | Rate-limit window-boundary precision | "Different windows have different counts" is tested; the precise rollover instant (off-by-one in `windowStart` math) is not. |
+| AF-1.7 | SMTP-failure response uniformity | NFR-10 ("SMTP failure logged, never leaked") has handler code but no test that compares response bytes between mail-success and mail-failure paths. |
+| AF-1.8 | FR-6 timing test gameability | The 1ms-Δ_mean bar would be passed by a pathological `await sleep(100ms)` implementation. The test catches *regressions* in the sham-work design but doesn't *prove* the design — proof comes from code review. |
+
+### 17.2 Code-level defense-in-depth gaps
+
+The tests can't catch these because the production code itself
+is missing the defense.
+
+| ID | Gap | Severity |
+|---|---|---|
+| AF-2.1 | Email header-injection guard in `composeRaw` | The `to` field is interpolated into raw RFC822. `normalize()` rejects `\r\n` upstream, but `composeRaw` should also reject — defense in depth. |
+| AF-2.2 | No CSRF-equivalent on `POST /login` | An attacker page can autosubmit a form to trigger a magic-link send to a known email. Doesn't compromise sessions, but is noise. SPEC §15 Q-4 deferral; resolution is Origin-header validation. |
+| AF-2.3 | Cookie `Secure` flag breaks HTTP localhost dev | New adopters can't test locally without TLS. Need a `cookieSecure` config option (default `true`). |
+| AF-2.4 | Naive cookie parser | `header.split(';')` doesn't handle quoted values with embedded `;`. Our values don't contain `;` but malicious injected cookies could confuse. |
+| AF-2.5 | No stored-handle integrity check | `store.upsertHandle()` accepts any string. A bug elsewhere passing a wrong format wouldn't be caught at the store boundary. |
+| AF-2.6 | Sweeper failure has no alerting hook | If `sweepTokens` throws repeatedly, we log to stderr and continue. Tables grow silently. No metric, no alert. |
+| AF-2.7 | Cookie domain mismatch with request Host header | `verify` accepts a valid cookie value regardless of which Host the request claims. Reverse proxies typically prevent this in practice; not a vuln in deployment, but the library trusts. |
+
+### 17.3 Priority-ranked hardening backlog
+
+**P0 — block "v1.0.0 ready":**
+
+- **AF-3.1:** Add HMAC-SHA256 known vector test for `deriveHandle` (closes AF-1.1).
+- **AF-3.2:** Add session signature known vector test pinning `sess\0` + HMAC-SHA256 (closes AF-1.2).
+- **AF-3.3:** Add session-expiry test in the `verify` handler path (closes AF-1.3).
+- **AF-3.4:** Add `\r\n` rejection guard in `composeRaw` (closes AF-2.1).
+- **AF-3.5:** Add concurrent token redemption test verifying exactly-one-wins (closes AF-1.4).
+
+**P1 — before v0.2.0:**
+
+- **AF-4.1:** Concurrent token issuance test under cap contention (closes AF-1.5).
+- **AF-4.2:** SMTP-failure response-uniformity test (closes AF-1.7).
+- **AF-4.3:** CSRF Origin-header validation on `POST /login` (closes AF-2.2; resolves SPEC §15 Q-4).
+- **AF-4.4:** `cookieSecure` config option (closes AF-2.3).
+
+**P2 — nice to have:**
+
+- **AF-5.1:** Rate-limit window-boundary precision test (closes AF-1.6).
+- **AF-5.2:** Cookie parser hardening + boundary tests (closes AF-2.4).
+- **AF-5.3:** Sweeper-failure alerting hook (closes AF-2.6).
+- **AF-5.4:** Stored-handle integrity check (closes AF-2.5).
+
+### 17.4 Note on FR-6 timing test (AF-1.8)
+
+The FR-6 test is a *regression detector*, not a *property
+prover*. A pathological implementation (e.g.,
+`await sleep(100ms)` on every path) would pass the 1ms Δ_mean
+bar trivially. The proof that knowless's sham-work pattern
+actually achieves timing equivalence comes from:
+
+1. Code review (the production code does not sleep).
+2. The architectural property that hit and miss paths
+   execute the same operations in the same order.
+3. The measured Δ_mean ≈ 0.002ms, far below what synthetic
+   delay would produce.
+
+Hardening here is mostly architectural discipline, not
+test additions. Future contributors MUST not introduce
+artificial sleeps to "make timing pass" — that defeats the
+property. The PRD records this norm; tests cannot enforce it.
+
+## 18. Approval and sign-off
 
 This PRD reflects the consensus reached during the design
 conversation between the user (hamr0) and Claude. Items were
 explicitly debated and either added to scope or moved to non-goals
 with documented reasoning.
 
-**Confirmed scope as of v0.12 of this PRD:**
+**Confirmed scope as of v0.13 of this PRD:**
 
 - Full opinionated library (not primitives kit) ✓
 - Six-line operator integration in library mode ✓
