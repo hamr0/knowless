@@ -1324,7 +1324,7 @@ The complete stack, consolidated for one-glance reference.
 |---|---|
 | Library | npm |
 | CLI | npm (same package, `bin/knowless-server`) |
-| Source | GitHub (MIT) |
+| Source | GitHub (Apache 2.0) |
 | Docs | In-repo Markdown only — no external docs site |
 | Versioning | SemVer |
 
