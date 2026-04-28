@@ -8,6 +8,28 @@ const DEFAULT_TOKEN_GRACE_MS = 24 * 60 * 60 * 1000;
 
 const SCHEMA_VERSION = '1';
 
+/**
+ * Validate a 64-char lowercase hex string at the store boundary.
+ * Handles, token hashes, and session ID hashes are all this shape per
+ * SPEC §3.1, §4.1, §5.3. A bug elsewhere passing a wrong-format value
+ * would otherwise silently corrupt the table or fail at SELECT time
+ * with a less-actionable error. Closes AF-5.4.
+ *
+ * @param {unknown} value
+ * @param {string} name parameter name for the thrown error
+ */
+function assertHexHash(value, name) {
+  if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) {
+    const got =
+      typeof value === 'string'
+        ? `"${value.slice(0, 16)}${value.length > 16 ? '...' : ''}"`
+        : typeof value;
+    throw new Error(
+      `store: ${name} must be 64-char lowercase hex (got ${got})`,
+    );
+  }
+}
+
 const DDL = `
   CREATE TABLE IF NOT EXISTS handles (
     handle         TEXT    PRIMARY KEY,
@@ -168,12 +190,15 @@ export function createStore(dbPath = ':memory:') {
   return {
     // --- Handle ---
     handleExists(handle) {
+      assertHexHash(handle, 'handle');
       return !!stmt.handleExists.get(handle);
     },
     upsertHandle(handle) {
+      assertHexHash(handle, 'handle');
       stmt.upsertHandleNoLogin.run(handle);
     },
     deleteHandle(handle) {
+      assertHexHash(handle, 'handle');
       deleteHandleAtomic(handle);
     },
 
@@ -188,6 +213,8 @@ export function createStore(dbPath = ':memory:') {
         maxActive = 0,
         now = Date.now(),
       } = args;
+      assertHexHash(tokenHash, 'tokenHash');
+      assertHexHash(handle, 'handle');
       insertTokenAtomic(
         tokenHash,
         handle,
@@ -199,6 +226,7 @@ export function createStore(dbPath = ':memory:') {
       );
     },
     getToken(tokenHash) {
+      assertHexHash(tokenHash, 'tokenHash');
       const row = stmt.getToken.get(tokenHash);
       if (!row) return null;
       return {
@@ -210,12 +238,15 @@ export function createStore(dbPath = ':memory:') {
       };
     },
     markTokenUsed(tokenHash, usedAt) {
+      assertHexHash(tokenHash, 'tokenHash');
       return stmt.markTokenUsed.run(usedAt, tokenHash).changes > 0;
     },
     countActiveTokens(handle, now = Date.now()) {
+      assertHexHash(handle, 'handle');
       return stmt.countActiveTokens.get(handle, now).n;
     },
     evictOldestActiveToken(handle, now = Date.now()) {
+      assertHexHash(handle, 'handle');
       return stmt.evictOldestActive.run(handle, now).changes;
     },
     sweepTokens(now = Date.now(), graceMs = DEFAULT_TOKEN_GRACE_MS) {
@@ -224,21 +255,27 @@ export function createStore(dbPath = ':memory:') {
 
     // --- Last login ---
     upsertLastLogin(handle, at) {
+      assertHexHash(handle, 'handle');
       stmt.upsertLastLogin.run(handle, at);
     },
     getLastLogin(handle) {
+      assertHexHash(handle, 'handle');
       const row = stmt.getLastLogin.get(handle);
       return row ? row.lastLoginAt : null;
     },
 
     // --- Session ---
     insertSession(sidHash, handle, expiresAt) {
+      assertHexHash(sidHash, 'sidHash');
+      assertHexHash(handle, 'handle');
       stmt.insertSession.run(sidHash, handle, expiresAt);
     },
     getSession(sidHash) {
+      assertHexHash(sidHash, 'sidHash');
       return stmt.getSession.get(sidHash) ?? null;
     },
     deleteSession(sidHash) {
+      assertHexHash(sidHash, 'sidHash');
       return stmt.deleteSession.run(sidHash).changes > 0;
     },
     sweepSessions(now = Date.now()) {

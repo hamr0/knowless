@@ -188,6 +188,107 @@ test('rate limits: increment, get, distinct windows, sweep', () => {
   s.close();
 });
 
+// --- AF-5.4: hex-hash integrity check at the store boundary ---
+//
+// All handle / tokenHash / sidHash values must be 64-char lowercase hex.
+// A bug elsewhere passing a wrong-format value would otherwise silently
+// corrupt the table or surface as a less-actionable error later.
+
+test('AF-5.4: rejects non-string handle', () => {
+  const s = fresh();
+  assert.throws(() => s.handleExists(null), /64-char lowercase hex/);
+  assert.throws(() => s.upsertHandle(123), /64-char lowercase hex/);
+  assert.throws(() => s.deleteHandle(undefined), /64-char lowercase hex/);
+  s.close();
+});
+
+test('AF-5.4: rejects wrong-length hash', () => {
+  const s = fresh();
+  assert.throws(() => s.handleExists('a'.repeat(63)), /64-char lowercase hex/);
+  assert.throws(() => s.handleExists('a'.repeat(65)), /64-char lowercase hex/);
+  assert.throws(() => s.handleExists(''), /64-char lowercase hex/);
+  s.close();
+});
+
+test('AF-5.4: rejects uppercase hex', () => {
+  const s = fresh();
+  assert.throws(() => s.handleExists('A'.repeat(64)), /64-char lowercase hex/);
+  s.close();
+});
+
+test('AF-5.4: rejects non-hex characters', () => {
+  const s = fresh();
+  assert.throws(() => s.handleExists('g'.repeat(64)), /64-char lowercase hex/);
+  assert.throws(() => s.handleExists('z'.repeat(64)), /64-char lowercase hex/);
+  assert.throws(
+    () => s.handleExists('a'.repeat(63) + ' '),
+    /64-char lowercase hex/,
+  );
+  s.close();
+});
+
+test('AF-5.4: insertToken validates both tokenHash and handle', () => {
+  const s = fresh();
+  s.upsertHandle(HANDLE_A);
+  assert.throws(
+    () =>
+      s.insertToken({
+        tokenHash: 'bad',
+        handle: HANDLE_A,
+        expiresAt: Date.now() + 60_000,
+      }),
+    /tokenHash must be 64-char lowercase hex/,
+  );
+  assert.throws(
+    () =>
+      s.insertToken({
+        tokenHash: TOKEN_HASH_1,
+        handle: 'BAD',
+        expiresAt: Date.now() + 60_000,
+      }),
+    /handle must be 64-char lowercase hex/,
+  );
+  s.close();
+});
+
+test('AF-5.4: session methods validate sidHash and handle', () => {
+  const s = fresh();
+  s.upsertHandle(HANDLE_A);
+  assert.throws(
+    () => s.insertSession('short', HANDLE_A, Date.now() + 60_000),
+    /sidHash must be 64-char lowercase hex/,
+  );
+  assert.throws(
+    () => s.insertSession(SID_HASH_1, 'nothex', Date.now() + 60_000),
+    /handle must be 64-char lowercase hex/,
+  );
+  assert.throws(() => s.getSession('x'), /sidHash must be 64-char lowercase hex/);
+  assert.throws(
+    () => s.deleteSession('x'),
+    /sidHash must be 64-char lowercase hex/,
+  );
+  s.close();
+});
+
+test('AF-5.4: error message includes parameter name and truncated value', () => {
+  const s = fresh();
+  try {
+    s.handleExists('XYZ');
+    assert.fail('expected throw');
+  } catch (err) {
+    assert.match(err.message, /handle/);
+    assert.match(err.message, /"XYZ"/);
+  }
+  // Long but bad input gets truncated with ellipsis
+  try {
+    s.handleExists('Z'.repeat(100));
+    assert.fail('expected throw');
+  } catch (err) {
+    assert.match(err.message, /\.\.\./);
+  }
+  s.close();
+});
+
 test('schema_version: re-opening the same DB succeeds', () => {
   // Use a real file to test re-open behaviour.
   const path = `/tmp/knowless-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`;
