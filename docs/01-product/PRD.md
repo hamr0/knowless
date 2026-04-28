@@ -1,6 +1,6 @@
 # knowless — Product Requirements Document (PRD)
 
-**Status:** Draft v0.13 (post-Phase-5-audit)
+**Status:** Draft v0.14 (first-customer scope decided)
 **Owner:** hamr0
 **Last updated:** 2026-04-21
 
@@ -185,6 +185,29 @@
 > hardening backlog tracked in §17 (new). v0.13 doesn't change
 > any FR or non-goal — it just makes the v0.1 hardening
 > backlog explicit.
+>
+> **v0.14 update:** First-customer scope (the webrevival forum)
+> identified one new ergonomic gap that's blocking for
+> library-mode adopters and elevated three previously-P1 items
+> to "ship before first use." Together they become v0.1.1:
+>
+> - **New AF-2.8:** `handleFromRequest(req)` programmatic
+>   session resolution. The HTTP-shaped `verifyHandler`
+>   forces middleware authors to copy code or do
+>   sub-request hacks. SPEC §9.4 specifies the contract;
+>   library exposes via `auth.handleFromRequest(req)`.
+> - **AF-4.3 promoted to v0.1.1:** Origin / Referer
+>   validation on POST /login (CSRF defense). New SPEC §7.3
+>   Step 0.
+> - **AF-4.4 promoted to v0.1.1:** `cookieSecure` config
+>   option (default `true`). Adopters can't dev-test on
+>   `http://localhost` without this. SPEC §5.4 updated.
+> - **AF-4.1, AF-4.2 promoted to v0.1.1** (defensive tests
+>   only, no FR change).
+>
+> FR-30 revised in this version to allow the cookieSecure
+> opt-out (production still defaults to MUST). FR table is
+> otherwise unchanged.
 
 ---
 
@@ -889,10 +912,16 @@ cookie, or 401 Unauthorized otherwise.
 endpoint (default path `/logout`) that clears the session cookie
 and returns 200 OK.
 
-**FR-30.** Session cookies MUST be signed with the operator
-secret (HMAC-SHA256), set with `Secure`, `HttpOnly`, and
-`SameSite=Lax` flags, and scoped to the configured cookie domain
-(default: the eTLD+1 of `baseUrl`).
+**FR-30 (revised v0.14).** Session cookies MUST be signed with
+the operator secret (HMAC-SHA256), set with `HttpOnly` and
+`SameSite=Lax` flags, scoped to the configured cookie domain
+(default: the eTLD+1 of `baseUrl`), and set with `Secure` *by
+default*. The `Secure` flag MAY be omitted via the
+`cookieSecure: false` config option for local development on
+`http://localhost`. Operators MUST NOT set `cookieSecure: false`
+in production. The library SHOULD log a stderr warning at
+startup when `cookieSecure: false` is configured. SPEC §5.4
+specifies the wire-level behavior.
 
 **FR-31.** Session cookie lifetime MUST be configurable (default:
 30 days, see §7.4) and MUST be enforced server-side via a stored
@@ -2271,23 +2300,25 @@ is missing the defense.
 | AF-2.5 | No stored-handle integrity check | `store.upsertHandle()` accepts any string. A bug elsewhere passing a wrong format wouldn't be caught at the store boundary. |
 | AF-2.6 | Sweeper failure has no alerting hook | If `sweepTokens` throws repeatedly, we log to stderr and continue. Tables grow silently. No metric, no alert. |
 | AF-2.7 | Cookie domain mismatch with request Host header | `verify` accepts a valid cookie value regardless of which Host the request claims. Reverse proxies typically prevent this in practice; not a vuln in deployment, but the library trusts. |
+| AF-2.8 | No programmatic `handleFromRequest(req)` API | The HTTP-shaped `verifyHandler` is awkward for in-process middleware. Library-mode adopters end up copying code or doing sub-request hacks. New finding from the first-customer (webrevival forum) scope review. |
 
 ### 17.3 Priority-ranked hardening backlog
 
-**P0 — block "v1.0.0 ready":**
+**P0 — shipped in v0.1.0:**
 
-- **AF-3.1:** Add HMAC-SHA256 known vector test for `deriveHandle` (closes AF-1.1).
-- **AF-3.2:** Add session signature known vector test pinning `sess\0` + HMAC-SHA256 (closes AF-1.2).
-- **AF-3.3:** Add session-expiry test in the `verify` handler path (closes AF-1.3).
-- **AF-3.4:** Add `\r\n` rejection guard in `composeRaw` (closes AF-2.1).
-- **AF-3.5:** Add concurrent token redemption test verifying exactly-one-wins (closes AF-1.4).
+- **AF-3.1:** Add HMAC-SHA256 known vector test for `deriveHandle` (closes AF-1.1). ✓
+- **AF-3.2:** Add session signature known vector test pinning `sess\0` + HMAC-SHA256 (closes AF-1.2). ✓
+- **AF-3.3:** Add session-expiry test in the `verify` handler path (closes AF-1.3). ✓
+- **AF-3.4:** Add `\r\n` rejection guard in `composeRaw` (closes AF-2.1). ✓
+- **AF-3.5:** Add concurrent token redemption test verifying exactly-one-wins (closes AF-1.4). ✓
 
-**P1 — before v0.2.0:**
+**P1 — shipping in v0.1.1 (first-customer scope, webrevival forum):**
 
+- **AF-4.0:** New ergonomic — `handleFromRequest(req)` programmatic API (closes AF-2.8). SPEC §9.4.
 - **AF-4.1:** Concurrent token issuance test under cap contention (closes AF-1.5).
 - **AF-4.2:** SMTP-failure response-uniformity test (closes AF-1.7).
-- **AF-4.3:** CSRF Origin-header validation on `POST /login` (closes AF-2.2; resolves SPEC §15 Q-4).
-- **AF-4.4:** `cookieSecure` config option (closes AF-2.3).
+- **AF-4.3:** CSRF Origin-header validation on `POST /login` (closes AF-2.2; resolves SPEC §15 Q-4). SPEC §7.3 Step 0.
+- **AF-4.4:** `cookieSecure` config option (closes AF-2.3). SPEC §5.4. FR-30 revised.
 
 **P2 — nice to have:**
 
@@ -2322,7 +2353,7 @@ conversation between the user (hamr0) and Claude. Items were
 explicitly debated and either added to scope or moved to non-goals
 with documented reasoning.
 
-**Confirmed scope as of v0.13 of this PRD:**
+**Confirmed scope as of v0.14 of this PRD:**
 
 - Full opinionated library (not primitives kit) ✓
 - Six-line operator integration in library mode ✓

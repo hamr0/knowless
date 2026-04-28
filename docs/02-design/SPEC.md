@@ -1,6 +1,6 @@
 # knowless — Specification (SPEC.md)
 
-**Status:** Draft v0.1 (post-PRD-v0.11, pre-implementation)
+**Status:** Draft v0.2 (post-PRD-v0.13, post-Phase-5)
 **Companion:** [`docs/01-product/PRD.md`](../01-product/PRD.md)
 
 This document pins the wire formats, byte layouts, and algorithms
@@ -313,7 +313,12 @@ Set-Cookie: knowless_session=<value>; Domain=<cookieDomain>; Path=/;
             Max-Age=<sessionTtlSeconds>; Secure; HttpOnly; SameSite=Lax
 ```
 
-- `Secure` — required (FR-30); cookie not sent over HTTP.
+- `Secure` — set by default (FR-30); cookie not sent over HTTP.
+  MAY be omitted via the `cookieSecure: false` config option, but
+  ONLY for development on `http://localhost`. Operators MUST NOT
+  set `cookieSecure: false` in production. The library SHOULD log
+  a stderr warning at startup when `cookieSecure: false` is
+  configured. (Closes AF-4.4.)
 - `HttpOnly` — required (FR-30); not visible to JS.
 - `SameSite=Lax` — required (FR-30); blocks cross-site POSTs
   but allows top-level navigations from email clicks (which is
@@ -472,13 +477,32 @@ internal state.
 
 ### 7.3 Flow with sham-work pattern
 
-The flow has two early-exits (rate-limit, honeypot) that are
-exempt from FR-6 timing equivalence per §16.20 of the PRD.
-After those, the registered-hit and silent-miss paths MUST
-perform equivalent work.
+The flow has THREE early-exits (Origin mismatch, honeypot,
+rate-limit) that are exempt from FR-6 timing equivalence per
+§16.20 of the PRD. After those, the registered-hit and
+silent-miss paths MUST perform equivalent work.
 
 ```
 POST /login arrives.
+
+Step 0 — Origin / Referer validation (CSRF defense, AF-4.3)
+  Read the `Origin` header (preferred) or `Referer` header
+  (fallback) from the request.
+
+  - If both are absent: ALLOW (curl / programmatic clients).
+  - If present: parse the URL and extract `host`. The host MUST
+    equal `cookieDomain` or be a subdomain of it (same rule as
+    the `next` URL whitelist in §11.2).
+  - If present and the host fails the whitelist: silently
+    short-circuit (return same_response, no sham work).
+
+  This blocks browser-side cross-origin POST attacks where a
+  malicious page autosubmits a form to /login with a known
+  email. SameSite=Lax does not protect /login because the form
+  itself is unauthenticated. The Origin check is exempt from
+  timing equivalence: an attacker submitting from a foreign
+  origin already knows their request shape; timing leaks
+  nothing the request itself didn't expose.
 
 Step 1 — Parse and validate input
   email_raw = body.email
@@ -750,7 +774,35 @@ per-call parse cost. better-sqlite3 caches prepared
 statements transparently when reused via the same
 `db.prepare(...)` object — pin it once at module load.
 
-### 9.4 What's NOT done in /verify
+### 9.4 Programmatic session resolution (`handleFromRequest`)
+
+Library-mode adopters frequently need to resolve "who is this
+authenticated user?" from a request object without going through
+HTTP. The `verifyHandler` is HTTP-shaped (writes 200 + header
+or 401 to the response); a programmatic equivalent is more
+ergonomic for in-process middleware.
+
+```
+handleFromRequest(req: HttpRequest) -> handle | null:
+  cookie = parseCookieHeader(req.headers.cookie, cookieName)
+  return verifySession(cookie)   // §5.5
+```
+
+Returns the authenticated handle string on success, or `null`
+on any failure (no cookie, malformed cookie, signature mismatch,
+expired session, no row). Callers treat `null` as "no
+authenticated user" — same semantic as the 401 from
+`verifyHandler`.
+
+The function MUST be synchronous or microtask-resolvable; it
+shares the verify hot path's <10ms p99 budget when
+operator-mounted as a per-request middleware.
+
+This closes audit finding AF-2.8 and is the recommended
+integration point for Express / Fastify / Hono middleware that
+needs `req.handle` populated.
+
+### 9.5 What's NOT done in /verify
 
 - No token issuance, no mail sends, no rate limit checks.
   The reverse proxy provides DoS protection at its layer.
@@ -1180,8 +1232,16 @@ unless measured.
 
 ## Changelog
 
-- **v0.1** (this draft): Initial post-PRD-v0.11 spec.
-  Pinned all wire formats. Resolved sham-mail destination
-  (null-route via Postfix). Deviated from PRD FR-27a on
-  mechanism (DB-bound rather than URL-signed). Open
-  questions in §15.
+- **v0.2** (post-Phase-5): Three behavioral additions for first
+  real-customer use (the webrevival forum):
+  - §5.4 — `cookieSecure` config option (default `true`).
+    Operators MAY disable for `http://localhost` development;
+    MUST NOT in production. Closes AF-4.4.
+  - §7.3 Step 0 — Origin / Referer validation as the new
+    first short-circuit on POST /login. Closes AF-4.3.
+  - §9.4 — `handleFromRequest(req)` programmatic API for
+    library-mode middleware. Closes AF-2.8.
+- **v0.1** (post-PRD-v0.11): Initial spec. Pinned all wire
+  formats. Resolved sham-mail destination (null-route via
+  Postfix). Deviated from PRD FR-27a on mechanism (DB-bound
+  rather than URL-signed). Open questions in §15.
