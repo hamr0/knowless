@@ -7,17 +7,14 @@
   "exports": {
     ".": "./src/index.js"
   },
-  "bin": {
-    "knowless-server": "./bin/knowless-server"
-  },
   "files": [
     "src/",
-    "bin/",
-    "config.example.env",
     "LICENSE",
     "NOTICE",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "GUIDE.md",
+    "knowless.context.md"
   ],
   "engines": {
     "node": ">=20.0.0"

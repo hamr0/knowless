@@ -27,6 +27,15 @@ place. Ops content currently lives in the SPEC pending OPS.md.
    (decisions log). When PRD and SPEC disagree: PRD wins on intent,
    SPEC wins on mechanism.
 
+## Top-level docs (sibling to this directory)
+
+- [`/README.md`](../README.md) — project pitch, six-line example
+- [`/GUIDE.md`](../GUIDE.md) — adopter walkthrough: who it's for,
+  install, configuration reference, FAQ, troubleshooting
+- [`/knowless.context.md`](../knowless.context.md) — dense AI-agent
+  integration guide (tables, public API, gotchas)
+- [`/CHANGELOG.md`](../CHANGELOG.md) — version history
+
 ## Document precedence
 
 If the PRD and SPEC disagree:
