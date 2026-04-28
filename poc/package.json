@@ -1,0 +1,11 @@
+{
+  "name": "knowless-poc",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway POC validating timing equivalence, round-trip, and verify hot path. Per AGENT_RULES: never ship the POC.",
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "nodemailer": "^6.9.0"
+  }
+}

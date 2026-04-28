@@ -1,0 +1,19 @@
+# Local Claude settings — never commit these
+.claude/settings.local.json
+
+# Node ecosystem
+node_modules/
+*.log
+.DS_Store
+
+# SQLite artifacts (POC + dev)
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+*.db
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
