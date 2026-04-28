@@ -88,6 +88,54 @@ test('rateLimit: window roll-over resets the count', () => {
   s.close();
 });
 
+test('rateLimit: window boundary is exact — last ms of N is limited, first ms of N+1 is fresh (closes AF-5.1)', () => {
+  const s = createStore(':memory:');
+  const W = 60_000;
+  const t0 = 100 * W; // window-aligned start time
+
+  // Saturate the window: 5 hits at t0 (start of window N).
+  for (let i = 0; i < 5; i++) {
+    rateLimitIncrement(s, 'login_ip', '1.2.3.4', W, t0);
+  }
+
+  // Anywhere inside window N: rate-limited.
+  assert.equal(rateLimitExceeded(s, 'login_ip', '1.2.3.4', 5, W, t0), true);
+  assert.equal(rateLimitExceeded(s, 'login_ip', '1.2.3.4', 5, W, t0 + 1), true);
+  // Last ms of window N (exclusive boundary): still N, still limited.
+  assert.equal(rateLimitExceeded(s, 'login_ip', '1.2.3.4', 5, W, t0 + W - 1), true);
+
+  // Exactly at t0 + W: this is windowStart of window N+1 — fresh counter.
+  assert.equal(rateLimitExceeded(s, 'login_ip', '1.2.3.4', 5, W, t0 + W), false);
+
+  // First increment of window N+1 makes count=1, still under limit.
+  rateLimitIncrement(s, 'login_ip', '1.2.3.4', W, t0 + W);
+  assert.equal(rateLimitExceeded(s, 'login_ip', '1.2.3.4', 5, W, t0 + W), false);
+
+  // Last ms before window N+2: still in N+1, still under limit (count=1).
+  assert.equal(rateLimitExceeded(s, 'login_ip', '1.2.3.4', 5, W, t0 + 2 * W - 1), false);
+  s.close();
+});
+
+test('rateLimit: limit semantics — exceeded triggers AT limit, not strictly above (AF-5.1)', () => {
+  const s = createStore(':memory:');
+  const W = 60_000;
+  const t0 = 100 * W;
+
+  // 4 hits: count=4, under limit of 5.
+  for (let i = 0; i < 4; i++) rateLimitIncrement(s, 'login_ip', '1.2.3.4', W, t0);
+  assert.equal(rateLimitExceeded(s, 'login_ip', '1.2.3.4', 5, W, t0), false);
+
+  // 5th hit: count=5, "exceeded" per >= limit semantics.
+  rateLimitIncrement(s, 'login_ip', '1.2.3.4', W, t0);
+  assert.equal(rateLimitExceeded(s, 'login_ip', '1.2.3.4', 5, W, t0), true);
+
+  // 6th, 7th: counter still rises (no cap on increment), still limited.
+  rateLimitIncrement(s, 'login_ip', '1.2.3.4', W, t0);
+  rateLimitIncrement(s, 'login_ip', '1.2.3.4', W, t0);
+  assert.equal(rateLimitExceeded(s, 'login_ip', '1.2.3.4', 5, W, t0), true);
+  s.close();
+});
+
 test('rateLimit: distinct keys / scopes are independent', () => {
   const s = createStore(':memory:');
   const now = HOUR * 100;
