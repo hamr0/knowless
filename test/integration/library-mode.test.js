@@ -126,6 +126,83 @@ test('knowless: close() stops the sweeper (process can exit)', async () => {
   assert.ok(true);
 });
 
+test('sweeper: onSweepError hook fires on failure (closes AF-5.3)', () => {
+  // Build a store that throws on sweepTokens — simulates DB corruption,
+  // disk-full, or any other condition that breaks the sweep loop.
+  const failingStore = {
+    sweepTokens() {
+      throw new Error('simulated sweep failure');
+    },
+    sweepSessions() {},
+    sweepRateLimits() {},
+    close() {},
+  };
+  const captured = [];
+  const auth = knowless({
+    secret: SECRET,
+    baseUrl: 'https://app.example.com',
+    from: 'auth@app.example.com',
+    cookieDomain: 'app.example.com',
+    store: failingStore,
+    transportOverride: nodemailer.createTransport({
+      streamTransport: true,
+      buffer: true,
+    }),
+    sweepIntervalMs: 60_000,
+    onSweepError: (err) => captured.push(err),
+  });
+
+  auth._sweep(); // trigger directly without waiting for interval
+
+  assert.equal(captured.length, 1);
+  assert.match(captured[0].message, /simulated sweep failure/);
+  auth.close();
+});
+
+test('sweeper: onSweepError NOT called when sweeps succeed (AF-5.3)', () => {
+  const captured = [];
+  const auth = newAuth({ onSweepError: (err) => captured.push(err) });
+  auth._sweep();
+  assert.equal(captured.length, 0);
+  auth.close();
+});
+
+test('sweeper: hook itself throwing does not crash sweeper (AF-5.3)', () => {
+  // The sweeper MUST keep running even if the alerting hook is broken.
+  const failingStore = {
+    sweepTokens() {
+      throw new Error('sim');
+    },
+    sweepSessions() {},
+    sweepRateLimits() {},
+    close() {},
+  };
+  let hookCalls = 0;
+  const auth = knowless({
+    secret: SECRET,
+    baseUrl: 'https://app.example.com',
+    from: 'auth@app.example.com',
+    cookieDomain: 'app.example.com',
+    store: failingStore,
+    transportOverride: nodemailer.createTransport({
+      streamTransport: true,
+      buffer: true,
+    }),
+    sweepIntervalMs: 60_000,
+    onSweepError: () => {
+      hookCalls++;
+      throw new Error('hook is broken');
+    },
+  });
+
+  // Two sweeps — even with the hook throwing, the second sweep must still
+  // run and the second call must still happen. (Crash would prevent it.)
+  assert.doesNotThrow(() => auth._sweep());
+  assert.doesNotThrow(() => auth._sweep());
+  assert.equal(hookCalls, 2);
+  auth.close();
+});
+
 test('knowless: re-exports core primitives for advanced consumers', async () => {
   const mod = await import('../../src/index.js');
   for (const name of [

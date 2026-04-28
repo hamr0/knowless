@@ -100,7 +100,10 @@ export function knowless(options = {}) {
   const handlers = createHandlers({ store, mailer, config: options });
 
   const sweepIntervalMs = options.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS;
-  const sweepTimer = setInterval(() => {
+  const onSweepError = options.onSweepError;
+  // Extract the sweep body so tests / operators can trigger it without
+  // waiting for the interval. Closes AF-5.3.
+  function runSweep() {
     try {
       const now = Date.now();
       store.sweepTokens(now);
@@ -108,8 +111,19 @@ export function knowless(options = {}) {
       store.sweepRateLimits(now - DEFAULT_RATE_LIMIT_RETENTION_MS);
     } catch (err) {
       console.error('[knowless] sweep failed:', err.message);
+      if (typeof onSweepError === 'function') {
+        // Hook errors are swallowed — alerting is best-effort and MUST
+        // NOT crash the sweep loop. Operator's hook can fail; sweeper
+        // continues.
+        try {
+          onSweepError(err);
+        } catch {
+          /* intentional */
+        }
+      }
     }
-  }, sweepIntervalMs);
+  }
+  const sweepTimer = setInterval(runSweep, sweepIntervalMs);
   // Don't keep the event loop alive just for the sweeper.
   if (typeof sweepTimer.unref === 'function') sweepTimer.unref();
 
@@ -125,6 +139,8 @@ export function knowless(options = {}) {
     deleteHandle: (handle) => store.deleteHandle(handle),
     /** Effective config (with defaults applied), useful for routing. */
     config: handlers._config,
+    /** Run a sweep tick on demand. Useful for tests and operator scripts. */
+    _sweep: runSweep,
     close() {
       clearInterval(sweepTimer);
       try {
