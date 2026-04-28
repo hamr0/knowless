@@ -109,6 +109,8 @@ export function knowless(options = {}) {
     verify: handlers.verify,
     logout: handlers.logout,
     loginForm: handlers.loginForm,
+    /** Resolve handle from request cookie programmatically (SPEC §9.4). */
+    handleFromRequest: handlers.handleFromRequest,
     /** Delete a handle + all tokens + all sessions atomically (FR-37a). */
     deleteHandle: (handle) => store.deleteHandle(handle),
     /** Effective config (with defaults applied), useful for routing. */

@@ -318,27 +318,36 @@ export function createHandlers({ store, mailer, config }) {
     res.end();
   }
 
-  function verify(req, res) {
+  /**
+   * Programmatic session resolution per SPEC §9.4. Reads the
+   * configured cookie from the request, validates its signature,
+   * looks up the session row, and returns the handle. Returns
+   * null on any failure (missing/malformed cookie, signature
+   * mismatch, expired session, no row). Recommended integration
+   * point for in-process middleware. Closes AF-2.8.
+   *
+   * @param {{ headers?: { cookie?: string } }} req
+   * @returns {string | null}
+   */
+  function handleFromRequest(req) {
     const cookie = getCookie(req, cfg.cookieName);
-    if (!cookie) {
-      res.statusCode = 401;
-      res.end();
-      return;
-    }
+    if (!cookie) return null;
     const sid = verifySessionSignature(cookie, cfg.secret);
-    if (!sid) {
-      res.statusCode = 401;
-      res.end();
-      return;
-    }
+    if (!sid) return null;
     const row = store.getSession(sidHashOf(sid));
-    if (!row || row.expiresAt <= Date.now()) {
+    if (!row || row.expiresAt <= Date.now()) return null;
+    return row.handle;
+  }
+
+  function verify(req, res) {
+    const handle = handleFromRequest(req);
+    if (!handle) {
       res.statusCode = 401;
       res.end();
       return;
     }
     res.statusCode = 200;
-    res.setHeader('X-User-Handle', row.handle);
+    res.setHeader('X-User-Handle', handle);
     res.end();
   }
 
@@ -376,6 +385,7 @@ export function createHandlers({ store, mailer, config }) {
     verify,
     logout,
     loginForm,
+    handleFromRequest,
     validateNextUrl: (raw) => validateNextUrl(raw, cfg.baseUrl, cfg.cookieDomain),
     // exposed for tests
     _config: cfg,

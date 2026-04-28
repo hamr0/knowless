@@ -246,6 +246,81 @@ test('expired session: verify returns 401 (closes AF-1.3)', async () => {
   h.close();
 });
 
+test('handleFromRequest: returns handle for valid cookie (closes AF-2.8)', async () => {
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  await postLogin(h.handlers, formBody({ email: REGISTERED }));
+  const token = extractToken(h.sentMail[0].raw);
+  const cbRes = await getCallback(h.handlers, token);
+  const cookie = parseSetCookie(cbRes._setCookies[0]);
+
+  const req = fakeReq({
+    url: '/anywhere',
+    headers: { cookie: `knowless_session=${cookie.value}` },
+  });
+  const handle = h.handlers.handleFromRequest(req);
+  assert.equal(handle, deriveHandle(REGISTERED, TEST_SECRET));
+  h.close();
+});
+
+test('handleFromRequest: returns null on no/malformed/expired/wrong-sig cookies (AF-2.8)', async () => {
+  const h = newHarness();
+  // No cookie at all
+  assert.equal(h.handlers.handleFromRequest(fakeReq({})), null);
+  // Empty cookie header
+  assert.equal(
+    h.handlers.handleFromRequest(fakeReq({ headers: { cookie: '' } })),
+    null,
+  );
+  // Cookie present but no knowless_session
+  assert.equal(
+    h.handlers.handleFromRequest(fakeReq({ headers: { cookie: 'other=foo' } })),
+    null,
+  );
+  // Malformed (no dot)
+  assert.equal(
+    h.handlers.handleFromRequest(
+      fakeReq({ headers: { cookie: 'knowless_session=garbage' } }),
+    ),
+    null,
+  );
+  // Wrong signature on a valid-looking sid
+  assert.equal(
+    h.handlers.handleFromRequest(
+      fakeReq({
+        headers: {
+          cookie: `knowless_session=${'A'.repeat(43)}.${'a'.repeat(64)}`,
+        },
+      }),
+    ),
+    null,
+  );
+  h.close();
+});
+
+test('handleFromRequest: returns null when session row is expired (AF-2.8 + AF-1.3)', async () => {
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  await postLogin(h.handlers, formBody({ email: REGISTERED }));
+  const token = extractToken(h.sentMail[0].raw);
+  const cbRes = await getCallback(h.handlers, token);
+  const cookie = parseSetCookie(cbRes._setCookies[0]);
+
+  // Force-expire the session row.
+  const sid = cookie.value.split('.')[0];
+  const crypto = await import('node:crypto');
+  const sidHash = crypto
+    .createHash('sha256')
+    .update(Buffer.from(sid, 'base64url'))
+    .digest('hex');
+  h.store.deleteSession(sidHash);
+  h.store.insertSession(sidHash, deriveHandle(REGISTERED, TEST_SECRET), Date.now() - 1000);
+
+  const req = fakeReq({ headers: { cookie: `knowless_session=${cookie.value}` } });
+  assert.equal(h.handlers.handleFromRequest(req), null);
+  h.close();
+});
+
 test('login form GET: renders the bare form with hidden next', () => {
   const h = newHarness();
   const req = fakeReq({ url: '/login?next=https://kuma.app.example.com/dash' });
