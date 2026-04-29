@@ -7,8 +7,13 @@
   "exports": {
     ".": "./src/index.js"
   },
+  "bin": {
+    "knowless-server": "./bin/knowless-server"
+  },
   "files": [
     "src/",
+    "bin/",
+    "config.example.env",
     "LICENSE",
     "NOTICE",
     "README.md",

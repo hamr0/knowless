@@ -289,27 +289,27 @@ forward-auth service. This is the deployment shape PRD §4.2
 targets (self-hosters gating Kuma / AdGuard / etc.).
 
 **Tasks:**
-- [ ] 6.1 — `bin/knowless-server`: shebang + ESM. Uses
+- [x] 6.1 — `bin/knowless-server`: shebang + ESM. Uses
       `node:util parseArgs`. Implements exactly the four
       flags from FR-51 (`--help`, `--version`, `--print-config`,
       `--config-check`). Refuses any other flag.
-- [ ] 6.2 — Env-var loader: read every `KNOWLESS_*` var per
+- [x] 6.2 — Env-var loader: read every `KNOWLESS_*` var per
       FR-49, map to the options object, refuse to start with a
       clear error pointing at the missing var (FR-55).
-- [ ] 6.3 — `--print-config` and `--config-check`: load config
+- [x] 6.3 — `--print-config` and `--config-check`: load config
       same way as runtime, redact secrets as `<set>`, validate
       SMTP host reachable + DB path writable.
-- [ ] 6.4 — `node:http` server: route POST /login → loginHandler,
+- [x] 6.4 — `node:http` server: route POST /login → loginHandler,
       GET /login → loginForm, GET /auth/callback → callback,
       GET /verify → verify, POST /logout → logout. Default
       port from env `KNOWLESS_PORT` or 8080.
-- [ ] 6.5 — Startup log block per FR-54: effective config
+- [x] 6.5 — Startup log block per FR-54: effective config
       (with secrets redacted), SMTP connection check result,
       listening port — single block to stdout.
-- [ ] 6.6 — `config.example.env`: ship at repo root with every
+- [x] 6.6 — `config.example.env`: ship at repo root with every
       `KNOWLESS_*` var, its default, and a one-line comment
       per FR-56.
-- [ ] 6.7 — `test/integration/cli.test.js`: spawn the binary
+- [x] 6.7 — `test/integration/cli.test.js`: spawn the binary
       as a subprocess, hit it with curl-equivalent (node:http
       requests), validate the responses match SPEC §7–§10.
 - [ ] 6.8 — `test/integration/forward-auth-caddy.test.js`
@@ -318,7 +318,8 @@ targets (self-hosters gating Kuma / AdGuard / etc.).
       configured, verify the round-trip from "request to
       protected service → 401 → /login → magic link click →
       303 → protected service serves request." If Docker isn't
-      available, skip with a clear message.
+      available, skip with a clear message. (Stub-skip placeholder
+      added in cli.test.js; full Docker harness deferred.)
 
 **Acceptance:**
 - `npx knowless-server --help` prints all env vars and exits 0.

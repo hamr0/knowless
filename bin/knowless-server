@@ -1,0 +1,313 @@
+#!/usr/bin/env node
+// knowless-server — standalone forward-auth HTTP server.
+// All configuration via KNOWLESS_* env vars. PRD §7.12 (FR-49 to FR-56).
+
+import { parseArgs } from 'node:util';
+import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import net from 'node:net';
+import fs from 'node:fs';
+import { knowless } from '../src/index.js';
+
+const PKG = JSON.parse(
+  readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'),
+    'utf8',
+  ),
+);
+
+// [optionKey, envVar, default (null = required), purpose, secret?]
+const SPEC = [
+  ['secret', 'KNOWLESS_SECRET', null, 'HMAC secret, ≥64 hex chars (32 bytes). REQUIRED.', true],
+  ['baseUrl', 'KNOWLESS_BASE_URL', null, 'Public base URL for magic links. REQUIRED.'],
+  ['from', 'KNOWLESS_FROM', null, 'Sender email address. REQUIRED.'],
+  ['dbPath', 'KNOWLESS_DB_PATH', './knowless.db', 'SQLite database path.'],
+  ['cookieDomain', 'KNOWLESS_COOKIE_DOMAIN', '', 'Session cookie domain. Defaults to baseUrl hostname.'],
+  ['cookieSecure', 'KNOWLESS_COOKIE_SECURE', 'true', 'Set Secure flag on cookies. "false" only for localhost dev.'],
+  ['tokenTtlSeconds', 'KNOWLESS_TOKEN_TTL_SECONDS', '900', 'Magic-link token lifetime (seconds).'],
+  ['sessionTtlSeconds', 'KNOWLESS_SESSION_TTL_SECONDS', '2592000', 'Session lifetime (seconds, default 30d).'],
+  ['linkPath', 'KNOWLESS_LINK_PATH', '/auth/callback', 'Magic-link callback path.'],
+  ['loginPath', 'KNOWLESS_LOGIN_PATH', '/login', 'Login form path.'],
+  ['verifyPath', 'KNOWLESS_VERIFY_PATH', '/verify', 'Forward-auth check path.'],
+  ['logoutPath', 'KNOWLESS_LOGOUT_PATH', '/logout', 'Logout path.'],
+  ['smtpHost', 'KNOWLESS_SMTP_HOST', 'localhost', 'SMTP host for outgoing magic-link mail.'],
+  ['smtpPort', 'KNOWLESS_SMTP_PORT', '25', 'SMTP port.'],
+  ['openRegistration', 'KNOWLESS_OPEN_REGISTRATION', 'false', 'Allow new-handle creation on first email.'],
+  ['subject', 'KNOWLESS_SUBJECT', 'Sign in', 'Email subject line.'],
+  ['includeLastLoginInEmail', 'KNOWLESS_INCLUDE_LAST_LOGIN_IN_EMAIL', 'true', 'Append last-sign-in note to magic-link email.'],
+  ['maxActiveTokensPerHandle', 'KNOWLESS_MAX_ACTIVE_TOKENS_PER_HANDLE', '5', 'Cap on concurrent magic links per handle. 0 disables.'],
+  ['maxLoginRequestsPerIpPerHour', 'KNOWLESS_MAX_LOGIN_REQUESTS_PER_IP_PER_HOUR', '30', 'Per-IP login submission cap. 0 disables.'],
+  ['maxNewHandlesPerIpPerHour', 'KNOWLESS_MAX_NEW_HANDLES_PER_IP_PER_HOUR', '3', 'Per-IP account-creation cap (openRegistration only). 0 disables.'],
+  ['honeypotFieldName', 'KNOWLESS_HONEYPOT_FIELD_NAME', 'website', 'Name of the honeypot field.'],
+  ['trustedProxies', 'KNOWLESS_TRUSTED_PROXIES', '127.0.0.1,::1', 'Comma-separated IPs trusted for X-Forwarded-For.'],
+];
+
+// PORT is a runtime-only knob; not part of the library options object.
+const SERVER_SPEC = [
+  ['port', 'KNOWLESS_PORT', '8080', 'TCP port the HTTP server binds.'],
+  ['host', 'KNOWLESS_HOST', '0.0.0.0', 'Address the HTTP server binds.'],
+];
+
+const NUMERIC = new Set([
+  'tokenTtlSeconds',
+  'sessionTtlSeconds',
+  'smtpPort',
+  'maxActiveTokensPerHandle',
+  'maxLoginRequestsPerIpPerHour',
+  'maxNewHandlesPerIpPerHour',
+]);
+const BOOLEAN = new Set([
+  'cookieSecure',
+  'openRegistration',
+  'includeLastLoginInEmail',
+]);
+const LIST = new Set(['trustedProxies']);
+
+function loadFromEnv(env = process.env) {
+  const opts = {};
+  for (const [key, envVar, def] of SPEC) {
+    const raw = env[envVar];
+    const value = raw !== undefined && raw !== '' ? raw : def;
+    if (value === null) continue; // required, missing — leave unset
+    if (value === '') continue;    // optional with empty default — skip
+    if (NUMERIC.has(key)) opts[key] = Number(value);
+    else if (BOOLEAN.has(key)) opts[key] = value === 'true' || value === '1';
+    else if (LIST.has(key)) opts[key] = value.split(',').map((s) => s.trim()).filter(Boolean);
+    else opts[key] = value;
+  }
+  const serverConfig = {};
+  for (const [key, envVar, def] of SERVER_SPEC) {
+    const raw = env[envVar];
+    const value = raw !== undefined && raw !== '' ? raw : def;
+    serverConfig[key] = key === 'port' ? Number(value) : value;
+  }
+  return { opts, serverConfig };
+}
+
+function printHelp() {
+  process.stdout.write(`knowless-server v${PKG.version}
+
+Usage:  knowless-server [--help | --version | --print-config | --config-check]
+
+Configuration is via environment variables. CLI flags do NOT set config.
+
+Required env vars:
+`);
+  for (const [, envVar, def, purpose] of SPEC) {
+    if (def !== null) continue;
+    process.stdout.write(`  ${envVar}\n      ${purpose}\n`);
+  }
+  process.stdout.write('\nOptional env vars (with defaults):\n');
+  for (const [, envVar, def, purpose] of SPEC) {
+    if (def === null) continue;
+    const shown = def === '' ? '<derived>' : def;
+    process.stdout.write(`  ${envVar}=${shown}\n      ${purpose}\n`);
+  }
+  for (const [, envVar, def, purpose] of SERVER_SPEC) {
+    process.stdout.write(`  ${envVar}=${def}\n      ${purpose}\n`);
+  }
+  process.stdout.write(
+    '\nLoad a .env file with:  node --env-file=knowless.env $(which knowless-server)\n',
+  );
+}
+
+function formatConfig({ opts, serverConfig }) {
+  const lines = [];
+  for (const [key, envVar, , , isSecret] of SPEC) {
+    if (!(key in opts)) {
+      lines.push(`${envVar}=<unset>`);
+      continue;
+    }
+    let val = opts[key];
+    if (isSecret) val = '<set>';
+    else if (Array.isArray(val)) val = val.join(',');
+    lines.push(`${envVar}=${val}`);
+  }
+  for (const [key, envVar] of SERVER_SPEC) {
+    lines.push(`${envVar}=${serverConfig[key]}`);
+  }
+  return lines.join('\n');
+}
+
+function checkRequired(opts) {
+  const errors = [];
+  for (const [key, envVar, def] of SPEC) {
+    if (def !== null) continue;
+    if (!(key in opts)) errors.push(`${envVar} is missing`);
+  }
+  if (opts.secret && opts.secret.length < 64) {
+    errors.push('KNOWLESS_SECRET must be at least 64 hex chars (32 bytes)');
+  }
+  return errors;
+}
+
+function checkSmtpReachable(host, port, timeoutMs = 2000) {
+  return new Promise((resolve) => {
+    const sock = net.createConnection({ host, port });
+    let done = false;
+    const finish = (ok, err) => {
+      if (done) return;
+      done = true;
+      try { sock.destroy(); } catch { /* tolerate */ }
+      resolve({ ok, err });
+    };
+    sock.setTimeout(timeoutMs);
+    sock.once('connect', () => finish(true));
+    sock.once('timeout', () => finish(false, new Error('connection timed out')));
+    sock.once('error', (e) => finish(false, e));
+  });
+}
+
+function checkDbWritable(dbPath) {
+  if (dbPath === ':memory:') return { ok: true };
+  try {
+    const dir = dirname(dbPath);
+    fs.accessSync(dir, fs.constants.W_OK);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, err };
+  }
+}
+
+async function runConfigCheck({ opts, serverConfig }, { print } = { print: true }) {
+  if (print) process.stdout.write(formatConfig({ opts, serverConfig }) + '\n');
+  const errors = checkRequired(opts);
+  if (errors.length) {
+    for (const e of errors) process.stderr.write(`config error: ${e}\n`);
+    return 1;
+  }
+  const smtp = await checkSmtpReachable(opts.smtpHost, opts.smtpPort);
+  if (!smtp.ok) {
+    process.stderr.write(
+      `config error: SMTP ${opts.smtpHost}:${opts.smtpPort} not reachable: ${smtp.err.message}\n`,
+    );
+    return 1;
+  }
+  process.stdout.write(`SMTP ${opts.smtpHost}:${opts.smtpPort} reachable: OK\n`);
+  const db = checkDbWritable(opts.dbPath);
+  if (!db.ok) {
+    process.stderr.write(
+      `config error: DB path ${opts.dbPath} not writable: ${db.err.message}\n`,
+    );
+    return 1;
+  }
+  process.stdout.write(`DB path ${opts.dbPath} writable: OK\n`);
+  return 0;
+}
+
+function buildRouter(auth, cfg) {
+  const map = new Map([
+    [`POST ${cfg.loginPath}`, auth.login],
+    [`GET ${cfg.loginPath}`, auth.loginForm],
+    [`GET ${cfg.linkPath}`, auth.callback],
+    [`GET ${cfg.verifyPath}`, auth.verify],
+    [`POST ${cfg.logoutPath}`, auth.logout],
+  ]);
+  return (req, res) => {
+    const url = new URL(req.url, 'http://placeholder.invalid');
+    const handler = map.get(`${req.method} ${url.pathname}`);
+    if (!handler) {
+      res.statusCode = 404;
+      res.setHeader('content-type', 'text/plain; charset=utf-8');
+      res.end('not found\n');
+      return;
+    }
+    Promise.resolve()
+      .then(() => handler(req, res))
+      .catch((err) => {
+        process.stderr.write(`[knowless] handler error: ${err.stack || err.message}\n`);
+        if (!res.headersSent) {
+          res.statusCode = 500;
+          res.setHeader('content-type', 'text/plain; charset=utf-8');
+          res.end('internal error\n');
+        }
+      });
+  };
+}
+
+async function runServer({ opts, serverConfig }) {
+  const errors = checkRequired(opts);
+  if (errors.length) {
+    for (const e of errors) process.stderr.write(`config error: ${e}\n`);
+    return 1;
+  }
+  const auth = knowless(opts);
+  const router = buildRouter(auth, auth.config);
+  const server = createServer(router);
+
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(serverConfig.port, serverConfig.host, () => {
+      server.off('error', reject);
+      resolve();
+    });
+  });
+
+  // FR-54: single startup log block.
+  const block =
+    '--- knowless-server started ---\n' +
+    formatConfig({ opts, serverConfig }) +
+    `\nlistening: http://${serverConfig.host}:${serverConfig.port}\n` +
+    '-------------------------------\n';
+  process.stdout.write(block);
+
+  const shutdown = (sig) => {
+    process.stdout.write(`[knowless] ${sig}, shutting down\n`);
+    server.close(() => {
+      try { auth.close(); } catch { /* tolerate */ }
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 5000).unref();
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  return null;
+}
+
+async function main(argv = process.argv.slice(2)) {
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args: argv,
+      options: {
+        help: { type: 'boolean' },
+        version: { type: 'boolean' },
+        'print-config': { type: 'boolean' },
+        'config-check': { type: 'boolean' },
+      },
+      strict: true,
+      allowPositionals: false,
+    });
+  } catch (err) {
+    process.stderr.write(`error: ${err.message}\nrun with --help for usage\n`);
+    return 2;
+  }
+  const { values } = parsed;
+  if (values.help) { printHelp(); return 0; }
+  if (values.version) { process.stdout.write(PKG.version + '\n'); return 0; }
+
+  const cfg = loadFromEnv();
+  if (values['print-config']) {
+    process.stdout.write(formatConfig(cfg) + '\n');
+    return 0;
+  }
+  if (values['config-check']) {
+    return runConfigCheck(cfg);
+  }
+  const code = await runServer(cfg);
+  return code === null ? undefined : code;
+}
+
+const isEntrypoint = import.meta.url === `file://${process.argv[1]}`;
+if (isEntrypoint) {
+  main().then((code) => {
+    if (code !== undefined) process.exit(code);
+  }).catch((err) => {
+    process.stderr.write(`fatal: ${err.stack || err.message}\n`);
+    process.exit(1);
+  });
+}
+
+export { loadFromEnv, formatConfig, checkRequired, SPEC, SERVER_SPEC, main };

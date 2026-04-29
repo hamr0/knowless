@@ -7,13 +7,31 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-- Standalone server (`bin/knowless-server`): env-var-driven CLI with
-  `--print-config` and `--config-check`, forward-auth deployment shape
-  for self-hosters gating no-auth services. (Tracked in TASKS.md
-  Phase 6.)
+### Added
+
+- **Standalone server** — `bin/knowless-server` ships a self-contained
+  HTTP server for forward-auth deployments. Configuration is via
+  `KNOWLESS_*` env vars (PRD FR-49 to FR-56); CLI flags are inspection-
+  only:
+  - `--help` lists every env var with default and purpose
+  - `--version` prints the package version
+  - `--print-config` prints effective config with secrets redacted as
+    `<set>` / `<unset>`
+  - `--config-check` validates required vars are present, the secret
+    is ≥64 hex chars, the SMTP host is reachable, and the DB path is
+    writable. Suitable for systemd `ExecStartPre`.
+- `config.example.env` — documented sample env file at repo root.
+  Operators copy this and load via `node --env-file=...` or systemd
+  `EnvironmentFile=`. Library does not auto-load it (FR-56).
+- Startup log block (FR-54) with effective config, SMTP check result,
+  and listening address.
+
+### Pending
+
 - `OPS.md`: full operator setup walkthrough (Postfix, null-route for
   sham mail, SPF/DKIM/PTR, reverse-proxy configs for Caddy / nginx /
   Traefik). (Tracked in TASKS.md Phase 7.)
+- Caddy forward-auth Docker integration test (TASKS.md 6.8).
 
 ## [0.1.2] — 2026-04-28
 
