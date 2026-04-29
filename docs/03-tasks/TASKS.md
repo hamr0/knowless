@@ -1,7 +1,53 @@
 # knowless — Implementation task list
 
-**Status:** Draft v0.1
-**Source documents:** [`docs/01-product/PRD.md`](../01-product/PRD.md) (v0.12), [`docs/02-design/SPEC.md`](../02-design/SPEC.md) (v0.1)
+**Source documents:** [`docs/01-product/PRD.md`](../01-product/PRD.md), [`docs/02-design/SPEC.md`](../02-design/SPEC.md)
+
+## Status (current)
+
+> **Phases 0 through 7 are shipped in v0.1.0 → v0.1.8.** The unchecked
+> boxes below are the original implementation plan, preserved as a
+> historical reference. For shipped scope, read [`CHANGELOG.md`](../../CHANGELOG.md).
+> For audit-finding status, read PRD §17.3.
+
+**Genuinely open items (not blocking adopters):**
+
+1. **6.8 — Caddy forward-auth Docker integration test.** Spin up
+   `knowless-server` + Caddy + a stub upstream in containers; drive
+   the full "request → 401 → magic link → 303 → upstream serves"
+   round-trip. A skip-on-no-docker placeholder exists in
+   `test/integration/cli.test.js`. ~2 hours of `docker compose`
+   orchestration. Optional polish — every individual hop is already
+   covered by unit + integration tests.
+2. **7.6 — Cross-link from sibling-project READMEs.** Add a one-line
+   bullet to `gitdone` and `addypin` READMEs pointing at knowless.
+   Manual edits on those repos; not editable from this directory.
+3. **v0.2.0 backlog (not started):**
+   - `knowless-server --check-null-route` CLI probe — submits a test
+     message to `shamRecipient` and confirms the local MTA discarded
+     it (closest the library can get to verifying operator setup).
+   - **Optional turnkey Docker image** — separate question; see below.
+
+**v1.0.0 graduation status:** 12/14 PRD §6.1 criteria met. The two
+not-met are 6.8 and 7.6 above; both are gravy, neither is blocking.
+The library is production-ready by every other measure.
+
+## A note on Docker (the two senses, not to be confused)
+
+knowless mentions Docker in two distinct contexts:
+
+- **Test harness (TASKS 6.8 above).** Use Docker only at test time
+  to verify forward-auth works against a real reverse proxy. Not a
+  release artifact. Skipped automatically on hosts without Docker.
+- **Turnkey image (NOT planned, but reasonable v0.2.0 ask).** A
+  pre-baked `knowless/knowless-server:0.1.x` image bundling Postfix
+  + null-route + the binary so a self-hoster runs `docker run` and
+  has a working auth gateway in one step. This would be a *release
+  artifact*, materially valuable for the self-hoster audience (PRD
+  §4.2). Not in scope today; flag if you want it added to v0.2.0.
+
+The pending v1.0 criterion is the test (6.8), not the image.
+
+---
 
 ## Ground rules (carry across all phases)
 
