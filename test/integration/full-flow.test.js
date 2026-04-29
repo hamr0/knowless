@@ -1024,6 +1024,30 @@ test('startLogin: skips Origin check (server-side caller is trusted) (AF-7.3)', 
 
 // --- AF-7.4: auth.deriveHandle convenience ---
 
+test('deriveHandle (factory wrapper): normalizes email before HMAC (AF-13)', async () => {
+  const { knowless } = await import('../../src/index.js');
+  const auth = knowless({
+    secret: TEST_SECRET,
+    baseUrl: 'https://app.example.com',
+    from: 'auth@app.example.com',
+    cookieDomain: 'app.example.com',
+    dbPath: ':memory:',
+    sweepIntervalMs: 60_000,
+  });
+  // The buggy pre-AF-13 behavior: these would yield different handles
+  // for the same human-equivalent email. After AF-13, they all match.
+  const lower = auth.deriveHandle('alice@example.com');
+  const mixed = auth.deriveHandle('Alice@Example.COM');
+  const padded = auth.deriveHandle('  alice@example.com  ');
+  assert.equal(lower, mixed);
+  assert.equal(lower, padded);
+  // Match what startLogin would compute for the same email.
+  // (Use the same secret so we can compare directly.)
+  const fromStartLogin = await auth.startLogin({ email: 'Alice@Example.COM' });
+  assert.equal(fromStartLogin.handle, lower);
+  auth.close();
+});
+
 test('deriveHandle (factory wrapper): uses configured secret (AF-7.4)', async () => {
   // We import the factory here to assert the wrapper exists and works
   // — bypasses the harness which uses createHandlers directly.

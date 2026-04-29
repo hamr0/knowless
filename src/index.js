@@ -1,7 +1,7 @@
 import { createStore } from './store.js';
 import { createMailer, validateBodyFooter } from './mailer.js';
 import { createHandlers } from './handlers.js';
-import { deriveHandle as deriveHandleRaw } from './handle.js';
+import { deriveHandle as deriveHandleRaw, normalize } from './handle.js';
 
 /** Default sweeper tick: 5 minutes. Per FR-13. */
 const DEFAULT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
@@ -153,9 +153,12 @@ export function knowless(options = {}) {
      *  See SPEC §7.3a. AF-7.3. */
     startLogin: handlers.startLogin,
     /** Derive the opaque handle for an email using the configured
-     *  secret. Lets adopters compute owner-handles outside HTTP context
-     *  without spreading the secret across modules. AF-7.4. */
-    deriveHandle: (email) => deriveHandleRaw(email, options.secret),
+     *  secret. Normalizes the email first (AF-13) so handles match
+     *  what `auth.startLogin` and `POST /login` would compute for the
+     *  same address typed with different casing or surrounding
+     *  whitespace. Adopters should treat this as the canonical handle
+     *  derivation. AF-7.4 / AF-13. */
+    deriveHandle: (email) => deriveHandleRaw(normalize(email), options.secret),
     /** Effective config (with defaults applied), useful for routing. */
     config: handlers._config,
     /** Run a sweep tick on demand. Useful for tests and operator scripts. */

@@ -21,11 +21,20 @@
 2. **7.6 — Cross-link from sibling-project READMEs.** Add a one-line
    bullet to `gitdone` and `addypin` READMEs pointing at knowless.
    Manual edits on those repos; not editable from this directory.
-3. **v0.2.0 backlog (not started):**
+3. **v0.2.0 backlog:**
+   - **Turnkey Docker image** — `knowless/knowless-server:0.2.x`
+     bundling Postfix + null-route + the binary so a self-hoster
+     runs `docker compose up` and has a working auth gateway in
+     one step. Materially shortens the PRD §4.2 self-hoster
+     onboarding from ~30–60 min of OPS.md walking to single-digit
+     minutes. Tasks: image Dockerfile + entrypoint with healthcheck;
+     `docker-compose.yml` example wiring it to Caddy; CI build to
+     GHCR; image vulnerability scanning; OPS.md "Quick start with
+     Docker" section. ~6–8 hours.
    - `knowless-server --check-null-route` CLI probe — submits a test
      message to `shamRecipient` and confirms the local MTA discarded
      it (closest the library can get to verifying operator setup).
-   - **Optional turnkey Docker image** — separate question; see below.
+     ~2 hours.
 
 **v1.0.0 graduation status:** 12/14 PRD §6.1 criteria met. The two
 not-met are 6.8 and 7.6 above; both are gravy, neither is blocking.
@@ -38,12 +47,12 @@ knowless mentions Docker in two distinct contexts:
 - **Test harness (TASKS 6.8 above).** Use Docker only at test time
   to verify forward-auth works against a real reverse proxy. Not a
   release artifact. Skipped automatically on hosts without Docker.
-- **Turnkey image (NOT planned, but reasonable v0.2.0 ask).** A
-  pre-baked `knowless/knowless-server:0.1.x` image bundling Postfix
-  + null-route + the binary so a self-hoster runs `docker run` and
-  has a working auth gateway in one step. This would be a *release
-  artifact*, materially valuable for the self-hoster audience (PRD
-  §4.2). Not in scope today; flag if you want it added to v0.2.0.
+- **Turnkey image (planned for v0.2.0).** A pre-baked
+  `knowless/knowless-server:0.2.x` image bundling Postfix +
+  null-route + the binary so a self-hoster runs `docker compose
+  up` and has a working auth gateway in one step. Release artifact,
+  materially valuable for the self-hoster audience (PRD §4.2).
+  Tracked under v0.2.0 backlog above.
 
 The pending v1.0 criterion is the test (6.8), not the image.
 

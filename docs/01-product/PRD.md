@@ -2316,6 +2316,9 @@ is missing the defense.
 | AF-2.21 | Trusted server-side callers can't opt out of IP rate-limit | Multi-process adopters (web + CLI / web + worker on the same host) hit the same per-IP bucket from `127.0.0.1`. Setting the cap to 0 at instance level forces config divergence between processes. Surfaced by addypin POC round 4 (Postfix-piped CLI). |
 | AF-2.22 | `handleFromRequest` under-documented | The load-bearing primitive for adopter authorization is in the public API but absent from GUIDE's protected-endpoint examples. New adopters dig source. Surfaced by addypin POC round 4. |
 | AF-2.23 | Multi-process adopter pattern undocumented | better-sqlite3 WAL handles cross-process correctness fine, but no docs explicitly say "multi-process is supported," when it's safe, and what each subsystem does under sharing. Surfaced by addypin POC round 4. |
+| AF-2.24 | `auth.deriveHandle(email)` did not normalize | The instance method passed raw email to HMAC while `auth.startLogin` and `POST /login` normalize first. Adopters using `deriveHandle` to compute owner-keyed lookups got silent handle mismatches whenever email casing varied between create-time and click-time. Hard-to-debug "user's records disappear" failure mode. Surfaced by addypin manual smoke. |
+| AF-2.25 | `failureRedirect` default cascades to a route Mode-A adopters don't serve | Default `failureRedirect = loginPath = /login`. Mode-A adopters who don't mount `loginForm` get expired/replayed magic-link clicks 302'd to a 404. Adopter-side fix is one-line config but the discovery cost is high. Surfaced by addypin manual smoke. |
+| AF-2.26 | No documented dev-time mail inspection workflow | `devLogMagicLinks` covers the URL but not subject/body/footer rendering. New adopters wiring `bodyFooter` or `subjectOverride` re-derive the same MailHog-on-1025 trick. Surfaced by addypin manual smoke. |
 
 ### 17.3 Priority-ranked hardening backlog
 
@@ -2406,6 +2409,18 @@ Breaking change re: secret semantics, locked in before v1.0.
   (closes AF-2.22). ✓
 - **AF-12:** OPS.md §11a documents the multi-process adopter
   pattern (closes AF-2.23). ✓
+
+**v0.1.9 — addypin manual smoke (post-integration):**
+
+- **AF-13:** `auth.deriveHandle(email)` instance method now
+  normalizes the email before HMAC (closes AF-2.24). Bare
+  `deriveHandle(emailNormalized, secret)` re-export keeps the
+  pre-normalized contract. ✓
+- **AF-14:** GUIDE flags the `failureRedirect` Mode-A footgun
+  prominently (closes AF-2.25). Default unchanged to avoid
+  breaking Mode-B users with custom paths. ✓
+- **AF-15:** OPS.md §11b covers MailHog dev workflow for
+  inspecting subject/body/footer (closes AF-2.26). ✓
 
 ### 17.4 Note on FR-6 timing test (AF-1.8)
 

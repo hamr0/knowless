@@ -7,7 +7,49 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+- **Turnkey Docker image** (`knowless/knowless-server:0.2.x`)
+  bundling Postfix + null-route + the binary so a self-hoster
+  runs `docker compose up` and has a working auth gateway in
+  one step. Material UX win for the PRD §4.2 self-hoster
+  audience. Targeted for v0.2.0.
 - Caddy forward-auth Docker integration test (TASKS.md 6.8).
+- `knowless-server --check-null-route`: CLI probe that submits a
+  test message to `shamRecipient` and confirms the local MTA
+  discarded it. Targeted for v0.2.0.
+
+## [0.1.9] — 2026-04-28
+
+addypin manual smoke turned up one real bug, one defaults footgun,
+and one DX gap.
+
+### Fixed
+
+- **`auth.deriveHandle(email)` now normalizes the email before
+  HMAC (AF-13).** Prior versions skipped `normalize()` while
+  `auth.startLogin` and `POST /login` ran it — adopters using
+  `deriveHandle` to precompute owner-keyed lookups got silent
+  handle mismatches whenever email casing varied between
+  create-time and click-time. Symptom was "user's records
+  disappear after login," which is awful to debug. The bare
+  `deriveHandle(emailNormalized, secret)` re-export still
+  expects pre-normalized input — that contract is unchanged.
+
+### Documentation
+
+- **GUIDE flags the `failureRedirect` Mode-A footgun (AF-14).**
+  Adopters running programmatic-only (`startLogin` without
+  mounting `loginForm`) hit a default `failureRedirect = /login`
+  pointing at a route they don't serve — expired/replayed
+  magic-link clicks 302 to a 404. The GUIDE now leads with this
+  in the Mode-A walkthrough and adds a callout in the config
+  table. Default unchanged to avoid breaking Mode-B users with
+  custom paths.
+- **OPS.md §11b — MailHog dev workflow (AF-15).** `docker run
+  mailhog/mailhog`, point knowless at port 1025, inspect every
+  outgoing mail (including sham submissions) in a UI at port
+  8025. Verifies `bodyFooter`, `subjectOverride`, and the
+  URL-line-isn't-QP-soft-broken invariant without spinning up
+  real Postfix.
 
 ## [0.1.8] — 2026-04-28
 

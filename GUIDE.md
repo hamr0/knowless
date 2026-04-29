@@ -297,7 +297,19 @@ callers. See SPEC §7.3a for the full contract.
 
 `auth.deriveHandle(email)` returns the same opaque HMAC handle
 that the form path uses, without you having to import the helper
-or pass the secret around.
+or pass the secret around. The instance method **normalizes the
+email** (lowercase, trim) before HMAC (AF-13), so `Alice@X.com`
+and `alice@x.com` produce the same handle — match what the form
+and `startLogin` would compute. The bare `deriveHandle` re-export
+takes pre-normalized input; use the instance method unless you
+have a specific reason to call the lower-level primitive.
+
+> **Mode-A heads-up: set `failureRedirect`.** If you only mount
+> `auth.callback` (not `auth.loginForm`), the default
+> `failureRedirect` cascade points at `/login` — a route you
+> don't serve. An expired or replayed magic-link click will 302
+> to a 404. Set `failureRedirect: '/'` (or any route you do
+> serve) when wiring Mode A.
 
 ### Step 5: Pre-seed users (closed-registration mode, default)
 
@@ -484,7 +496,7 @@ Full options table:
 | `trustedProxies` | no | `['127.0.0.1', '::1']` | IPs allowed to set `X-Forwarded-For`. |
 | `shamRecipient` | no | `null@knowless.invalid` | Where sham mail goes (your MTA must discard it). |
 | `sweepIntervalMs` | no | `300000` | Sweeper tick (5 min default). |
-| `failureRedirect` | no | (= `loginPath`) | Where /auth/callback failures redirect. |
+| `failureRedirect` | no | (= `loginPath`) | Where /auth/callback failures redirect. **Mode-A adopters:** if you don't mount `loginForm`, set this to a route you actually serve (e.g. `/`) — otherwise expired/replayed magic-link clicks 302 to a 404. |
 | `store` | no | (built-in better-sqlite3) | Inject your own store implementation. |
 | `mailer` | no | (built-in nodemailer) | Inject your own mailer. |
 

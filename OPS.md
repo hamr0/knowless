@@ -589,6 +589,54 @@ want for forward-auth-style deployments anyway.
 
 ---
 
+## 11b. Local development without a real Postfix
+
+Spinning up Postfix on a developer laptop just to inspect what
+knowless sends is heavy. Two leaner options:
+
+### Option A — `devLogMagicLinks: true` (no MTA needed)
+
+knowless already supports this for the URL. When SMTP submission
+fails AND `devLogMagicLinks: true` is set, the magic link is
+printed to stderr tagged `[knowless dev:<from>]`. Sufficient for
+smoke-testing the click flow, not the email content. AF-6.2.
+
+### Option B — MailHog (visual UI for the rendered mail)
+
+For verifying subject/body/footer rendering or the timing of
+sham-vs-real submissions, run [MailHog](https://github.com/mailhog/MailHog)
+or any compatible test SMTP catcher (e.g. mailpit, smtp4dev) on
+the dev machine and point knowless at it.
+
+```sh
+# Docker one-liner for MailHog
+docker run --rm -p 1025:1025 -p 8025:8025 mailhog/mailhog
+```
+
+Then in your dev knowless config:
+
+```js
+const auth = knowless({
+  secret: process.env.KNOWLESS_SECRET,
+  baseUrl: 'http://localhost:3000',
+  from: 'auth@dev.local',
+  smtpHost: 'localhost',
+  smtpPort: 1025,         // MailHog's SMTP port
+  cookieSecure: false,    // localhost-only dev
+});
+```
+
+Open `http://localhost:8025` in your browser; every magic-link mail
+(including sham submissions to `null@knowless.invalid`) shows up in
+the inbox UI with full subject/body/headers visible. Perfect for
+verifying `bodyFooter`, `subjectOverride`, the URL line is intact
+without QP soft-breaks, etc.
+
+> Don't ship MailHog into production. It accepts mail from anywhere
+> and stores it forever — defeats the entire knowless threat model.
+
+---
+
 ## 12. Backup and recovery
 
 The only stateful file is the SQLite database (`KNOWLESS_DB_PATH`,
