@@ -1,7 +1,7 @@
 # knowless -- Integration Guide
 
 > For AI assistants and developers wiring knowless into a project.
-> v0.2.2 | Node.js >= 22.5 | 1 dep (nodemailer) | Apache-2.0
+> v0.2.3 | Node.js >= 22.5 | 1 dep (nodemailer) | Apache-2.0
 
 ## What this is
 
@@ -70,7 +70,15 @@ const auth = knowless({
   // --- Required ---
   secret: '...',                      // 64-char hex; HMAC + cookie sig key
   baseUrl: 'https://app.example.com', // base for magic-link URL construction
-  from: 'auth@app.example.com',       // sender address
+  from: 'auth@app.example.com',       // bare RFC 5321 sender (envelope MAIL FROM
+                                      //   AND default From: header value)
+
+  // --- Optional sender display name (AF-27, v0.2.3) ---
+  fromName: 'addypin',                // optional. When set, From: header is
+                                      //   `<fromName> <from>` (e.g. `addypin
+                                      //   <noreply@addypin.com>`); envelope.from
+                                      //   stays bare. Validated at startup:
+                                      //   ASCII, ≤60 chars, no CR/LF, no <>".
 
   // --- Storage ---
   dbPath: './knowless.db',            // SQLite file; ':memory:' for tests
@@ -179,6 +187,7 @@ import {
   validateSubject,  // pure: validate operator-supplied subject
   validateBodyFooter, // pure: validate operator-supplied footer (AF-8.2)
   validateBodyOverride, // pure: validate per-call body override (AF-26)
+  validateFromName, // pure: validate operator-supplied From: display name (AF-27)
   renderLoginForm,  // pure: HTML5 page rendering
   normalize,        // pure: email normalization
   deriveHandle,     // pure: HMAC-SHA256(hex-decoded secret, email)

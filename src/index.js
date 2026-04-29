@@ -34,7 +34,13 @@ function safeHook(fn, label) {
  * @typedef {Object} KnowlessOptions
  * @property {string} secret           HMAC secret, ≥64 hex chars (32 bytes). FR-47, FR-48.
  * @property {string} baseUrl          Public base URL for magic links.
- * @property {string} from             Sender email address.
+ * @property {string} from             Sender email address (bare RFC 5321
+ *   MAIL FROM and default From: header value).
+ * @property {string} [fromName]       Optional RFC 5322 display name for
+ *   the From: header (AF-27, v0.2.3). When set, recipients see
+ *   `<fromName> <from>` in the From: header (e.g. `addypin
+ *   <noreply@addypin.com>`); SMTP envelope sender stays bare.
+ *   Validated at factory startup (ASCII, ≤60 chars, no CR/LF/<>).
  * @property {string} [dbPath='./knowless.db']
  * @property {string} [cookieDomain]   Defaults to baseUrl's hostname.
  * @property {number} [tokenTtlSeconds=900]
@@ -136,6 +142,7 @@ export function knowless(options = {}) {
     options.mailer ??
     createMailer({
       from: options.from,
+      fromName: options.fromName,
       smtpHost: options.smtpHost,
       smtpPort: options.smtpPort,
       transportOverride: options.transportOverride,
@@ -279,6 +286,7 @@ export {
   validateSubject,
   validateBodyFooter,
   validateBodyOverride,
+  validateFromName,
 } from './mailer.js';
 export { createHandlers } from './handlers.js';
 export { renderLoginForm } from './form.js';

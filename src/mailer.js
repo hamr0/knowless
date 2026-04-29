@@ -12,13 +12,17 @@ const ASCII_RE = /^[\x00-\x7f]*$/;
  * the SMTP submission transport.
  *
  * @param {object} args
- * @param {string} args.from
+ * @param {string} args.from               bare RFC 5321 MAIL FROM address
+ * @param {string} [args.fromName]         optional RFC 5322 display name
+ *   (AF-27). When set, the From: header is `name <addr>`; when null/
+ *   undefined, the From: header is the bare `addr`. envelope.from
+ *   (caller-side) always uses the bare address.
  * @param {string} args.to
  * @param {string} args.subject
  * @param {string} args.body  ASCII-only plain text
  * @returns {string} RFC822 message with CRLF line endings
  */
-function composeRaw({ from, to, subject, body }) {
+function composeRaw({ from, fromName, to, subject, body }) {
   // AF-2.1: header-injection defense in depth. normalize() upstream
   // already rejects \r and \n in email addresses, but the mailer
   // shouldn't trust its callers — this is the layer that emits the
@@ -35,11 +39,19 @@ function composeRaw({ from, to, subject, body }) {
       throw new Error(`mailer: ${name} contains CR/LF — header injection blocked`);
     }
   }
+  // AF-27: defensive re-check on fromName (createMailer already validated
+  // at startup, but composeRaw owns the wire-format invariant).
+  if (fromName != null && fromName !== '') {
+    if (typeof fromName !== 'string' || /[\r\n<>"]/.test(fromName)) {
+      throw new Error('mailer: fromName contains forbidden characters');
+    }
+  }
   const fromDomain = from.includes('@') ? from.split('@').pop() : 'localhost';
   const messageId = `<${crypto.randomUUID()}@${fromDomain}>`;
   const date = new Date().toUTCString();
+  const fromHeader = fromName ? `${fromName} <${from}>` : from;
   const headers = [
-    `From: ${from}`,
+    `From: ${fromHeader}`,
     `To: ${to}`,
     `Subject: ${subject}`,
     `Date: ${date}`,
@@ -149,7 +161,15 @@ export function composeBody({ tokenRaw, baseUrl, linkPath, lastLoginAt, bodyFoot
  * invariant — QP soft-breaks WILL break the magic link):
  *   - non-empty string
  *   - ≤ 2048 chars (operator-side overflow guard)
- *   - ASCII only
+ *   - ASCII only (0x00–0x7F). This excludes typographic punctuation
+ *     that adopters reach for out of habit:
+ *       em/en dashes (— –)        → use - or --
+ *       smart quotes (" " ' ')    → use " and '
+ *       ellipses (…)              → use ...
+ *       middle dots (·)           → use | or -
+ *     The constraint preserves 7bit transfer encoding; non-ASCII
+ *     would force quoted-printable, which can soft-break the URL
+ *     line and break the link.
  *   - no CR (LF allowed; defense-in-depth header-injection guard)
  *   - the magic-link URL appears EXACTLY ONCE
  *   - that occurrence is on its own line (no leading or trailing
@@ -194,6 +214,49 @@ export function validateBodyOverride(body, url) {
 }
 
 /**
+ * Validate the operator-supplied display name for the `From:` header
+ * (AF-27, v0.2.3). knowless splits the bare envelope sender (RFC 5321
+ * MAIL FROM) from the RFC 5322 `From:` header, allowing operators to
+ * brand the inbox preview as `addypin <noreply@addypin.com>` rather
+ * than the bare `noreply@addypin.com` (which most clients display as
+ * the local-part "noreply").
+ *
+ * Constraints (deliberately strict — same trap as bodyOverride for
+ * typographic punctuation):
+ *   - ≤ 60 chars (same ballpark as Subject)
+ *   - ASCII only (0x00–0x7F). Excludes em/en dashes, smart quotes,
+ *     ellipses, middle dots. Use plain ASCII equivalents.
+ *   - No CR / LF (header-injection defense; same invariant as
+ *     composeRaw enforces on `from` / `to` / `subject`)
+ *   - No `<` / `>` / `"` (would break the `name <addr>` quoting)
+ *
+ * Returns the validated string (or `null` for null/empty input, so
+ * callers can pass through). Throws on violation.
+ *
+ * @param {unknown} name
+ * @returns {string|null}
+ */
+export function validateFromName(name) {
+  if (name == null || name === '') return null;
+  if (typeof name !== 'string') {
+    throw new Error('fromName must be a string when provided');
+  }
+  if (name.length > 60) {
+    throw new Error('fromName must be ≤ 60 chars');
+  }
+  if (!ASCII_RE.test(name)) {
+    throw new Error('fromName must be ASCII (no em-dashes, smart quotes, ellipses, etc.)');
+  }
+  if (/[\r\n]/.test(name)) {
+    throw new Error('fromName must not contain CR/LF (header-injection defense)');
+  }
+  if (/[<>"]/.test(name)) {
+    throw new Error('fromName must not contain < > or " (would break From: header quoting)');
+  }
+  return name;
+}
+
+/**
  * Validate operator-overridden subject per SPEC §12.5.
  * Throws on invalid; warns (returns warnings array) on suspicious-but-allowed.
  *
@@ -225,18 +288,24 @@ export function validateSubject(subject) {
  * with streamTransport:true) to capture the raw bytes without an MTA.
  *
  * @param {object} cfg
- * @param {string} cfg.from           sender, e.g. 'auth@app.example.com'
+ * @param {string} cfg.from           bare RFC 5321 sender address (envelope
+ *   MAIL FROM AND default From: header value when fromName is unset)
+ * @param {string} [cfg.fromName]     AF-27 (v0.2.3). Optional RFC 5322
+ *   display name. When set, the From: header is `name <addr>`; envelope
+ *   sender stays bare. Validated by validateFromName() at startup.
  * @param {string} [cfg.smtpHost='localhost']
  * @param {number} [cfg.smtpPort=25]
  * @param {object} [cfg.transportOverride] for tests
- * @returns {{ submit(args: {to:string, subject:string, body:string}): Promise<any>, close(): void }}
+ * @returns {{ submit(args: {to:string, subject:string, body:string}): Promise<any>, verify(): Promise<true>, close(): void }}
  */
 export function createMailer(cfg) {
-  const { from, smtpHost = 'localhost', smtpPort = 25, transportOverride } = cfg;
+  const { from, fromName, smtpHost = 'localhost', smtpPort = 25, transportOverride } = cfg;
   if (typeof from !== 'string' || from.length === 0) {
     throw new Error('mailer: from is required');
   }
   if (!ASCII_RE.test(from)) throw new Error('mailer: from must be ASCII');
+  // AF-27: validate display name at startup; fail-fast.
+  const validatedFromName = validateFromName(fromName);
 
   const transport =
     transportOverride ??
@@ -269,7 +338,9 @@ export function createMailer(cfg) {
       if (!ASCII_RE.test(body)) {
         throw new Error('mailer: body must be ASCII');
       }
-      const raw = composeRaw({ from, to, subject, body });
+      // AF-27: From: header may include display name; envelope.from
+      // stays bare (RFC 5321 MAIL FROM doesn't allow display names).
+      const raw = composeRaw({ from, fromName: validatedFromName, to, subject, body });
       return transport.sendMail({
         envelope: { from, to: [to] },
         raw,

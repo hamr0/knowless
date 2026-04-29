@@ -631,7 +631,8 @@ Full options table:
 |---|---|---|---|
 | `secret` | yes | — | HMAC key, ≥64 hex chars (32 bytes). FR-47, FR-48. |
 | `baseUrl` | yes | — | Base URL for magic-link construction. |
-| `from` | yes | — | Sender email address. |
+| `from` | yes | — | Bare RFC 5321 sender (envelope MAIL FROM AND default From: header). |
+| `fromName` | no | — | Optional RFC 5322 display name for the From: header (AF-27, v0.2.3+). When set, recipients see `addypin <noreply@addypin.com>` instead of bare `noreply@addypin.com` — most clients display the local-part as the sender name otherwise. ASCII, ≤60 chars, no CR/LF/<>". envelope.from stays bare always. |
 | `dbPath` | no | `./knowless.db` | SQLite file path. |
 | `cookieDomain` | no | (eTLD+1 of `baseUrl`) | Session cookie scope. |
 | `cookieName` | no | `knowless_session` | Session cookie name. |

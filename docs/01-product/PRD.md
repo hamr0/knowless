@@ -2551,6 +2551,36 @@ the "could the adopter do this themselves?" test, and so were
 relocated to adopter / perimeter / operator code. AF-26 fails that
 same test in the *library's* favor — knowless has to own this.
 
+**v0.2.3 — From: display name + bodyOverride docs (2026-04-29):**
+
+addypin's first live send with the new bodyOverride template
+surfaced two issues. One was an em-dash trap (ASCII validator
+threw — fix was one commit on their side; knowless side was a JSDoc
+clarification). The other was a real conflation gap: knowless used
+the same string for both the RFC 5321 envelope sender (bare address
+required) and the RFC 5322 From: header (display name allowed),
+preventing adopters from rendering "addypin <noreply@addypin.com>"
+without forking the mailer.
+
+- **AF-27:** Optional `fromName` factory option. When set, the
+  From: header becomes `${fromName} <${from}>`; envelope.from stays
+  bare always. New `validateFromName()` validator: ASCII, ≤60 chars,
+  no CR/LF, no `<>"`. Re-exported alongside the other validate*
+  helpers. Cosmetic in the user's inbox (most clients show local-
+  part as sender name when display name is absent), but identity-
+  layer because the From: header is part of what knowless emits over
+  SMTP. ✓
+- **AF-26 docs nit:** JSDoc on `validateBodyOverride` extended with
+  a typographic-punctuation paragraph (em/en dashes, smart quotes,
+  ellipses, middle dots — and their ASCII alternatives). Same trap
+  surface applies to the `fromName` validator. Pure documentation;
+  no API change. ✓
+
+addypin briefly proposed shipping AF-27 as v1.1.0 (additive,
+non-breaking after walk-away). That was rejected — additive v1.x
+feature releases would empty the walk-away promise. The right
+pattern is the AF-26 precedent: ship as v0.2.x, freeze at v1.0.0.
+
 **v0.2.1 post-release scope cull (walk-away stress-test, 2026-04-29):**
 
 After v0.2.1 shipped, the v0.2.x Unreleased backlog was stress-tested

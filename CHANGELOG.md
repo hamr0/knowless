@@ -15,8 +15,76 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-**v0.2.2 is feature-complete.** v1.0.0 is the planned next release —
+**v0.2.3 is feature-complete.** v1.0.0 is the planned next release —
 walk-away promotion, no API changes.
+
+## [0.2.3] — 2026-04-29
+
+**Last cosmetic gap before walk-away: From: header display name
+(AF-27).** addypin's recipients saw `From: noreply@addypin.com`
+instead of `From: addypin <noreply@addypin.com>` — most clients
+render the local-part as the sender name in inbox previews, so the
+brand "addypin" was hidden behind "noreply." The library was
+conflating the bare RFC 5321 envelope sender (MAIL FROM, no display
+name allowed) with the RFC 5322 From: header (display name allowed),
+preventing adopters from working around without forking the mailer.
+
+Also: the `bodyOverride` JSDoc (AF-26) gets an extra paragraph
+calling out typographic-punctuation traps after addypin hit the
+em-dash on a live send. Pure documentation, no API change.
+
+### Added
+
+- **`fromName` factory option (AF-27).** Optional. When set, the
+  `From:` header is rendered as `${fromName} <${from}>`; envelope
+  sender stays bare. Validated at factory startup via the new
+  `validateFromName()` helper:
+  - ≤ 60 chars
+  - ASCII only (excludes em/en dashes, smart quotes, ellipses,
+    middle dots — same trap surface as `bodyOverride`)
+  - No CR / LF (header-injection defense, matches existing
+    composeRaw invariant)
+  - No `<` / `>` / `"` (would break `name <addr>` quoting)
+
+  ```js
+  knowless({
+    secret, baseUrl,
+    from: 'noreply@addypin.com',
+    fromName: 'addypin',  // recipient sees: From: addypin <noreply@addypin.com>
+  });
+  ```
+
+  Adopters who don't pass `fromName` get the existing behavior (bare
+  address in From:). No call-site changes required.
+
+- **`validateFromName(name)` re-export.** Pure validator alongside
+  the other `validate*` helpers, for ahead-of-time tests.
+
+### Changed
+
+- **`composeRaw` accepts `fromName` arg.** Internal mailer-interface
+  change: composeRaw now takes an optional `fromName` parameter
+  threaded through from `createMailer`. Adopters with a custom
+  `mailer` injection (rare) should plumb `fromName` accordingly if
+  they want the display-name behavior; otherwise the field is
+  ignored and bare-address behavior is preserved.
+
+### Documentation
+
+- **`bodyOverride` JSDoc (AF-26)** — added a typographic-punctuation
+  paragraph listing the four common traps (em/en dashes, smart
+  quotes, ellipses, middle dots) and their ASCII alternatives.
+  Adopters writing email copy reach for these out of habit; the
+  validator error message was clear, but a heads-up before the first
+  live send saves a debugging cycle. Same paragraph applies to the
+  `fromName` validator docstring (AF-27).
+
+### Internal
+
+- 12 new tests in `test/integration/from-name.test.js` covering
+  the happy path (real + sham branches), envelope stays bare,
+  whitespace passthrough, all five validation error paths, and the
+  re-exported `validateFromName` helper. Test count: 223 → 235.
 
 ## [0.2.2] — 2026-04-29
 
