@@ -1,8 +1,15 @@
 # knowless — Product Requirements Document (PRD)
 
-**Status:** Draft v0.14 (first-customer scope decided)
+**Status:** v0.15 (first-customer integration shipped)
 **Owner:** hamr0
-**Last updated:** 2026-04-21
+**Last updated:** 2026-04-28
+
+> **First customer integration: DONE.** addypin merged its
+> `try/knowless` branch and runs knowless as its auth+mail layer.
+> Net delta: ~1,150 LOC of bespoke auth/mail code removed, ~35 LOC
+> of knowless wiring added (~33× reduction). The integration drove
+> 11 audit findings (AF-7 → AF-17) all shipped in v0.1.5–v0.1.10.
+> See §17.3 for the closed backlog.
 
 > **For future Claude:** This PRD is the canonical source of truth
 > for what `knowless` is and what it isn't. Section 16 captures
@@ -542,37 +549,43 @@ parent-domain scoped.
 
 ### 6.1 v1.0.0 ship criteria
 
-- [ ] All public APIs implemented per `SPEC.md`
-- [ ] Source small enough to audit in an afternoon (no hard LOC cap)
-- [ ] Production dependency count = 2 (`nodemailer`,
+- [x] All public APIs implemented per `SPEC.md`
+- [x] Source small enough to audit in an afternoon (no hard LOC cap)
+- [x] Production dependency count = 2 (`nodemailer`,
       `better-sqlite3`)
-- [ ] All tests pass on Node 20+
-- [ ] Silent-on-miss timing test passes the practical-effect-size
+- [x] All tests pass on Node 20+
+- [x] Silent-on-miss timing test passes the practical-effect-size
       bar: delta_mean(hit, miss) < 1ms over ≥1000 iterations
       locally (per FR-6)
-- [ ] Token replay test passes
-- [ ] Token expiry test passes
-- [ ] Full integration test (HTTP login → email send via test
+- [x] Token replay test passes
+- [x] Token expiry test passes
+- [x] Full integration test (HTTP login → email send via test
       Postfix → click → handle returned) passes
 - [ ] Forward-auth integration test (Caddy + standalone server +
-      mock protected service) passes
-- [ ] README example works copy-pasted by an external developer
-- [ ] OPS.md provides complete Postfix and reverse-proxy setup
+      mock protected service) passes — TASKS 6.8, deferred
+- [x] README example works copy-pasted by an external developer
+      (validated by addypin integration: ~1,150 LOC removed,
+      ~35 added)
+- [x] OPS.md provides complete Postfix and reverse-proxy setup
       checklists for Ubuntu/Debian
-- [ ] `npx knowless-server` works from a fresh install
-- [ ] Published to npm
-- [ ] Cross-linked from gitdone and addypin READMEs
+- [x] `npx knowless-server` works from a fresh install
+- [x] Published to npm
+- [ ] Cross-linked from gitdone and addypin READMEs — manual on
+      those repos; not editable from knowless
 
 ### 6.2 30-day post-launch criteria
 
-- [ ] At least one external service has integrated and provided
-      feedback (library mode)
+- [x] At least one external service has integrated and provided
+      feedback (library mode) — **addypin shipped on knowless,
+      drove AF-7 → AF-17**
 - [ ] At least one external self-hoster has deployed
-      `knowless-server` for a real service (standalone mode)
-- [ ] No unresolved security issues
-- [ ] No silent-on-miss regressions
-- [ ] Documentation answers the top 5 user questions without
-      requiring a GitHub issue
+      `knowless-server` for a real service (standalone mode) —
+      pending; v0.2.0 turnkey Docker image will accelerate this
+- [x] No unresolved security issues
+- [x] No silent-on-miss regressions
+- [x] Documentation answers the top 5 user questions without
+      requiring a GitHub issue (addypin integration produced zero
+      issues, only feedback rounds)
 
 ### 6.3 Walk-away criteria
 

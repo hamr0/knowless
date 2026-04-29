@@ -5,6 +5,14 @@ All notable changes to `knowless` are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning is [SemVer](https://semver.org/).
 
+## Milestones
+
+- **2026-04-28 — First customer integration shipped.** addypin
+  merged its `try/knowless` branch and runs knowless as its
+  auth+mail layer. ~1,150 LOC of bespoke auth/mail code removed,
+  ~35 LOC of knowless wiring added (~33× reduction). Drove audit
+  findings AF-7 → AF-17 across v0.1.5–v0.1.10.
+
 ## [Unreleased]
 
 - **Turnkey Docker image** (`knowless/knowless-server:0.2.x`)

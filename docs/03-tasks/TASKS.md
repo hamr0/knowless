@@ -9,6 +9,14 @@
 > historical reference. For shipped scope, read [`CHANGELOG.md`](../../CHANGELOG.md).
 > For audit-finding status, read PRD §17.3.
 
+**addypin integration: DONE.** addypin merged its `try/knowless`
+branch — knowless is its auth+mail layer in production. Net delta:
+~1,150 LOC removed (custom mailer, inbound CLI, login plumbing,
+pin-confirmation state machine, fingerprint helpers, matching tests),
+~35 LOC added. ~33× reduction on the auth/mail surface. The
+integration drove audit findings AF-7 → AF-17, all shipped in
+v0.1.5–v0.1.10. See PRD §17 for the closed backlog.
+
 **Genuinely open items (not blocking adopters):**
 
 1. **6.8 — Caddy forward-auth Docker integration test.** Spin up
@@ -18,9 +26,10 @@
    `test/integration/cli.test.js`. ~2 hours of `docker compose`
    orchestration. Optional polish — every individual hop is already
    covered by unit + integration tests.
-2. **7.6 — Cross-link from sibling-project READMEs.** Add a one-line
-   bullet to `gitdone` and `addypin` READMEs pointing at knowless.
-   Manual edits on those repos; not editable from this directory.
+2. **7.6 — Cross-link from sibling-project READMEs.** addypin already
+   references knowless via the integration commit; the cross-link
+   from the addypin README itself is a manual one-line bullet on
+   that repo. `gitdone` similar.
 3. **v0.2.0 backlog:**
    - **Turnkey Docker image** — `knowless/knowless-server:0.2.x`
      bundling Postfix + null-route + the binary so a self-hoster
@@ -38,7 +47,8 @@
 
 **v1.0.0 graduation status:** 12/14 PRD §6.1 criteria met. The two
 not-met are 6.8 and 7.6 above; both are gravy, neither is blocking.
-The library is production-ready by every other measure.
+The library is production-ready by every other measure — proven by
+the addypin merge.
 
 ## A note on Docker (the two senses, not to be confused)
 
