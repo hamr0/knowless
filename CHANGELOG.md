@@ -15,8 +15,80 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-**v0.2.3 is feature-complete.** v1.0.0 is the planned next release —
-walk-away promotion, no API changes.
+Walk-away is active. Per PRD §6.3, the only changes that ship after
+v1.0.0 are:
+
+- Security fixes (CVEs in `nodemailer` or `node:sqlite` with
+  user-visible impact)
+- Bug fixes that don't change the API surface
+- Documentation corrections
+
+Feature requests are deflected to PRD §14 NO-GO, to sibling projects,
+or to forking. The library being "done" is a feature.
+
+## [1.0.0] — 2026-04-29
+
+**Walk-away release.** No new API surface vs v0.2.3 — v1.0.0 is the
+*promotion* tag, marking the library as feature-complete and the
+maintenance mode (security + bug fixes only) as active.
+
+This is the terminal feature release by intent (PRD §6.3). The
+discipline that produced it: every proposed addition during the
+v0.1.x → v0.2.x cycle was stress-tested against two questions —
+*is this identity layer or behavior layer?* and *does the mechanism
+live with the policy?* Items that failed either test were cut to
+adopter / perimeter / operator code. The result is a library small
+enough to audit in an afternoon, with one production dep, and a
+closed feature list.
+
+### Why v1.0.0 now
+
+All PRD §6.1 graduation criteria are met (12/12 after the 2026-04-29
+scope cull). The library is production-validated end-to-end:
+
+- **One real adopter shipped on it.** addypin merged its
+  `try/knowless` branch and runs knowless as its auth+mail layer in
+  production. ~1,150 LOC of bespoke auth/mail removed; ~35 LOC of
+  knowless wiring added; ~33× reduction.
+- **The full v0.2.x hardening cycle was driven by adopter signal.**
+  Eleven audit findings (AF-7 through AF-25) shipped or were
+  recorded as deliberate cuts. Final cycle (AF-19/20/21 operator
+  visibility, AF-26 body override, AF-27 From: display name) all
+  validated by addypin in production:
+  - v0.2.2 + AF-26: bodyOverride wired into pin-confirmation,
+    login, and resend@ flows; subject and body agree end-to-end.
+  - v0.2.3 + AF-27: fromName wired in both factories (web +
+    inbound CLI); inbox preview shows the brand name, not the
+    local-part. Validated by use, not by spec.
+- **Test count: 235** (192 in v0.2.0 → 207 in v0.2.1 → 223 in
+  v0.2.2 → 235 in v0.2.3 → 235 in v1.0.0).
+- **One production dep** (`nodemailer`). Storage uses `node:sqlite`
+  from the Node stdlib. No native compile, no toolchain.
+- **`Δ_mean` for the FR-6 timing test: 0.002ms locally** — 500× under
+  the 1ms practical-effect bar.
+
+### What walk-away means in practice
+
+- **Pin and forget.** v1.0.0 will work the same way three years
+  later. Security patches will land in v1.x.
+- **No v2.0.** No sessions+, no plugin system, no second mailer, no
+  SaaS counterpart. The API closes here.
+- **No additive v1.x.** v1.1.0, v1.2.0, etc. are reserved for
+  security and bug fixes only. Feature requests are deflected.
+  This is the discipline the AF-23/24/25 cuts and the
+  AF-26/AF-27-as-v0.2.x decisions both protect: walk-away has to
+  *mean* walk-away, otherwise the promise is empty.
+- **Procurement signal.** A library that has explicitly committed
+  to *not growing* is a different risk profile from a typical OSS
+  package. Most reviews read "still actively developed" as good —
+  but for an auth dependency, "still actively developed" is also
+  "still changing in ways you'll have to track." knowless inverts
+  that.
+
+### Migration from v0.2.3
+
+None. v1.0.0 is byte-equivalent to v0.2.3 source. `npm install
+knowless@1.0.0` is a drop-in.
 
 ## [0.2.3] — 2026-04-29
 

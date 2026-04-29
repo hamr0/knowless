@@ -1,7 +1,7 @@
 # knowless -- Integration Guide
 
 > For AI assistants and developers wiring knowless into a project.
-> v0.2.3 | Node.js >= 22.5 | 1 dep (nodemailer) | Apache-2.0
+> v1.0.0 (walk-away release) | Node.js >= 22.5 | 1 dep (nodemailer) | Apache-2.0
 
 ## What this is
 

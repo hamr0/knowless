@@ -1,6 +1,6 @@
 # knowless — Product Requirements Document (PRD)
 
-**Status:** v0.15 (first-customer integration shipped)
+**Status:** v0.15 (v1.0.0 shipped 2026-04-29 — walk-away active)
 **Owner:** hamr0
 **Last updated:** 2026-04-28
 
@@ -2550,6 +2550,25 @@ forking. Contrast with the AF-23/24/25 cuts: each of those failed
 the "could the adopter do this themselves?" test, and so were
 relocated to adopter / perimeter / operator code. AF-26 fails that
 same test in the *library's* favor — knowless has to own this.
+
+**v1.0.0 — walk-away tag (2026-04-29):**
+
+Promotion release. No new API surface vs v0.2.3 — v1.0.0 marks the
+library as feature-complete and walk-away (PRD §6.3) as active.
+
+addypin validated the full v0.2.x cycle end-to-end before the cut:
+v0.2.2's `bodyOverride` wired into pin-confirmation + login +
+resend@ flows; v0.2.3's `fromName` wired into both factories (web +
+inbound CLI). Pin R61E3P confirmed: inbox preview shows "addypin"
+as sender, body matches subject, footer reads complete. Surface
+validated by use, not by spec. addypin's signal: "no more validation
+we can do that v1.0.1 wouldn't also catch."
+
+12/12 PRD §6.1 graduation criteria met. Walk-away discipline through
+the v0.1.x → v0.2.x cycle absorbed all four legitimate identity-
+layer gaps adopters surfaced (AF-19/20/21 observability, AF-26 body,
+AF-27 fromName) and rejected three speculative additions
+(AF-23/24/25). v1.x is patch-only by design.
 
 **v0.2.3 — From: display name + bodyOverride docs (2026-04-29):**
 
