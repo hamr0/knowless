@@ -748,7 +748,7 @@ test('devLogMagicLinks: prints link to stderr only when SMTP fails AND opt-in (A
     );
 
     const printed = stderrChunks.join('');
-    assert.match(printed, /\[knowless dev\] magic link: https:\/\/app\.example\.com\/auth\/callback\?t=/);
+    assert.match(printed, /\[knowless dev:auth@app\.example\.com\] magic link: https:\/\/app\.example\.com\/auth\/callback\?t=/);
 
     h.mailer.submit = realSubmit;
     h.close();
@@ -777,6 +777,249 @@ test('devLogMagicLinks: silent when opt-in is off (AF-6.2)', async () => {
     h.close();
   } finally {
     process.stderr.write = origWrite;
+  }
+});
+
+// --- AF-7.3: auth.startLogin programmatic entry ---
+
+test('startLogin: real path — registered handle gets a real magic-link mail (AF-7.3)', async () => {
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  // Build a thin auth-shaped wrapper for the test (the same wiring
+  // index.js does)
+  const auth = { startLogin: h.handlers.startLogin };
+  const result = await auth.startLogin({
+    email: REGISTERED,
+    nextUrl: 'https://kuma.app.example.com/dash',
+    sourceIp: '203.0.113.42',
+  });
+  assert.equal(result.submitted, true);
+  assert.match(result.handle, /^[a-f0-9]{64}$/);
+  assert.equal(result.handle, deriveHandle(REGISTERED, TEST_SECRET));
+  // Real mail submitted (not sham).
+  assert.equal(h.sentMail.length, 1);
+  assert.equal(h.sentMail[0].envelope.to[0], REGISTERED);
+  h.close();
+});
+
+test('startLogin: sham path — unknown email gets sham routing, same shape (AF-7.3)', async () => {
+  const h = newHarness();
+  const auth = { startLogin: h.handlers.startLogin };
+  const result = await auth.startLogin({
+    email: 'nobody@example.com',
+    sourceIp: '203.0.113.42',
+  });
+  // Same shape: handle present, submitted true.
+  assert.equal(result.submitted, true);
+  assert.match(result.handle, /^[a-f0-9]{64}$/);
+  // Sham routed to shamRecipient — DB row has is_sham=1 but NOT redeemable.
+  assert.equal(h.sentMail.length, 1);
+  assert.equal(h.sentMail[0].envelope.to[0], 'null@knowless.invalid');
+  h.close();
+});
+
+test('startLogin: openRegistration auto-creates the handle (AF-7.3)', async () => {
+  const h = newHarness({ openRegistration: true });
+  const auth = { startLogin: h.handlers.startLogin };
+  const result = await auth.startLogin({ email: 'fresh@example.com' });
+  assert.equal(result.submitted, true);
+  // Handle now exists.
+  assert.equal(h.store.handleExists(result.handle), true);
+  // Real mail (not sham).
+  assert.equal(h.sentMail[0].envelope.to[0], 'fresh@example.com');
+  h.close();
+});
+
+test('startLogin: rate-limit returns same shape (AF-7.3)', async () => {
+  const h = newHarness({ maxLoginRequestsPerIpPerHour: 2 });
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  const auth = { startLogin: h.handlers.startLogin };
+  await auth.startLogin({ email: REGISTERED, sourceIp: '1.2.3.4' });
+  await auth.startLogin({ email: REGISTERED, sourceIp: '1.2.3.4' });
+  const limited = await auth.startLogin({ email: REGISTERED, sourceIp: '1.2.3.4' });
+  // Same return shape — caller cannot distinguish "rate-limited" from "sent."
+  assert.equal(limited.submitted, true);
+  assert.match(limited.handle ?? '', /^([a-f0-9]{64})?$/);
+  // Only 2 mails actually went out.
+  assert.equal(h.sentMail.length, 2);
+  h.close();
+});
+
+test('startLogin: malformed email throws programmer error (AF-7.3)', async () => {
+  const h = newHarness();
+  await assert.rejects(() => h.handlers.startLogin({}));
+  await assert.rejects(() => h.handlers.startLogin({ email: '' }));
+  await assert.rejects(() => h.handlers.startLogin({ email: 123 }));
+  await assert.rejects(() =>
+    h.handlers.startLogin({ email: 'a@b.com', nextUrl: 99 }),
+  );
+  h.close();
+});
+
+test('startLogin: skips Origin check (server-side caller is trusted) (AF-7.3)', async () => {
+  // No req object means no Origin header at all — startLogin doesn't
+  // care because it's a programmatic API.
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  const r = await h.handlers.startLogin({ email: REGISTERED });
+  assert.equal(r.submitted, true);
+  assert.equal(h.sentMail.length, 1);
+  h.close();
+});
+
+// --- AF-7.4: auth.deriveHandle convenience ---
+
+test('deriveHandle (factory wrapper): uses configured secret (AF-7.4)', async () => {
+  // We import the factory here to assert the wrapper exists and works
+  // — bypasses the harness which uses createHandlers directly.
+  const { knowless } = await import('../../src/index.js');
+  const auth = knowless({
+    secret: TEST_SECRET,
+    baseUrl: 'https://app.example.com',
+    from: 'auth@app.example.com',
+    cookieDomain: 'app.example.com',
+    dbPath: ':memory:',
+    sweepIntervalMs: 60_000,
+  });
+  const h = auth.deriveHandle('alice@example.com');
+  assert.equal(h, deriveHandle('alice@example.com', TEST_SECRET));
+  // Different email → different handle.
+  assert.notEqual(h, auth.deriveHandle('bob@example.com'));
+  auth.close();
+});
+
+// --- AF-7.1: empty-body warning when a parser ate the stream ---
+
+test('warnEmptyBodyOnce: fires when Content-Length>0 but body is empty (AF-7.1)', async () => {
+  const captured = [];
+  const orig = console.warn;
+  console.warn = (...args) => captured.push(args.join(' '));
+  try {
+    const h = newHarness();
+    // Simulate a parser that consumed the stream: body='' but
+    // content-length claims data was present.
+    const req = fakeReq({
+      method: 'POST',
+      url: '/login',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'content-length': '24',
+        origin: 'https://app.example.com',
+      },
+      body: '', // pre-consumed
+    });
+    const res = fakeRes();
+    await h.handlers.login(req, res);
+    const printed = captured.join('\n');
+    assert.match(printed, /POST \/login received an empty body/);
+    assert.match(printed, /body parser/);
+    // Second time: still warns only once.
+    captured.length = 0;
+    const req2 = fakeReq({
+      method: 'POST',
+      url: '/login',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'content-length': '24',
+        origin: 'https://app.example.com',
+      },
+      body: '',
+    });
+    await h.handlers.login(req2, fakeRes());
+    assert.equal(captured.length, 0);
+    h.close();
+  } finally {
+    console.warn = orig;
+  }
+});
+
+test('warnEmptyBodyOnce: silent on a normal empty POST (no Content-Length) (AF-7.1)', async () => {
+  const captured = [];
+  const orig = console.warn;
+  console.warn = (...args) => captured.push(args.join(' '));
+  try {
+    const h = newHarness();
+    const req = fakeReq({
+      method: 'POST',
+      url: '/login',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        origin: 'https://app.example.com',
+      },
+      body: '',
+    });
+    await h.handlers.login(req, fakeRes());
+    assert.equal(captured.length, 0);
+    h.close();
+  } finally {
+    console.warn = orig;
+  }
+});
+
+// --- AF-7.5: transportOverride startup validation ---
+
+test('createMailer: rejects transportOverride without sendMail (AF-7.5)', async () => {
+  const { createMailer } = await import('../../src/mailer.js');
+  assert.throws(
+    () => createMailer({ from: 'a@b.com', transportOverride: { connectionTimeout: 500 } }),
+    /sendMail/,
+  );
+  assert.throws(
+    () => createMailer({ from: 'a@b.com', transportOverride: {} }),
+    /sendMail/,
+  );
+});
+
+// --- AF-7.6: devLogMagicLinks line includes from address ---
+
+test('devLogMagicLinks: line is tagged with cfg.from (AF-7.6)', async () => {
+  const captured = [];
+  const orig = process.stderr.write.bind(process.stderr);
+  process.stderr.write = (chunk) => {
+    captured.push(String(chunk));
+    return true;
+  };
+  try {
+    const h = newHarness({ devLogMagicLinks: true, openRegistration: true });
+    h.mailer.submit = async () => { throw new Error('nope'); };
+    await postLogin(
+      h.handlers,
+      formBody({ email: REGISTERED }),
+      { origin: 'https://app.example.com' },
+    );
+    const printed = captured.join('');
+    assert.match(printed, /\[knowless dev:auth@app\.example\.com\] magic link:/);
+    h.close();
+  } finally {
+    process.stderr.write = orig;
+  }
+});
+
+test('devLogMagicLinks: silent-miss hint also tagged (AF-7.2 dev hint, AF-7.6)', async () => {
+  const captured = [];
+  const orig = process.stderr.write.bind(process.stderr);
+  process.stderr.write = (chunk) => {
+    captured.push(String(chunk));
+    return true;
+  };
+  try {
+    const h = newHarness({ devLogMagicLinks: true });
+    h.mailer.submit = async () => { throw new Error('nope'); };
+    await postLogin(
+      h.handlers,
+      formBody({ email: 'nobody@example.com' }),
+      { origin: 'https://app.example.com' },
+    );
+    const printed = captured.join('');
+    // Hint mentions silent-miss + the email + openRegistration state.
+    assert.match(printed, /silent-miss/);
+    assert.match(printed, /nobody@example\.com/);
+    assert.match(printed, /openRegistration=false/);
+    // Still no leaked magic link.
+    assert.equal(printed.includes('magic link:'), false);
+    h.close();
+  } finally {
+    process.stderr.write = orig;
   }
 });
 

@@ -2306,6 +2306,10 @@ is missing the defense.
 | AF-2.11 | `confirmationMessage` rendered as raw HTML | Operator-config string interpolated unescaped; if the operator naively passed user-controlled data through it, reflected XSS. Footgun, not direct vuln. Surfaced by addypin spike. |
 | AF-2.12 | `trustedProxies` accepted only exact IPs | k8s/docker/cgnat deployments can't enumerate every peer IP. CIDR support needed. Surfaced by addypin spike. |
 | AF-2.13 | No SMTP-down dev fallback | Local development without a real Postfix has no way to obtain the magic link. Operators end up stubbing the mailer. Surfaced by addypin spike. |
+| AF-2.14 | No programmatic magic-link entry | Adopters building "use first, claim later" UX (deferred-claim disposable resources, e.g. drop-a-pin-then-confirm) can't reproduce the FR-6 timing-equivalence guarantee without reaching into private exports. Surfaced by addypin POC. |
+| AF-2.15 | No `auth.deriveHandle` instance method | Adopters needing the handle outside HTTP context import the helper directly and pass the secret manually, spreading secret-handling surface. Surfaced by addypin POC. |
+| AF-2.16 | Pre-parsed body silently null-routes /login | On non-Express stacks, any body-reader middleware in front of `auth.login` consumes the stream; knowless sees empty body, falls through to sham. No diagnostic. Cost the addypin POC ~30min. |
+| AF-2.17 | `transportOverride` accepts malformed config silently | A bare options bag passed where a transport is expected constructs successfully but throws "sendMail is not a function" at first submission — possibly hours after startup. |
 
 ### 17.3 Priority-ranked hardening backlog
 
@@ -2345,6 +2349,27 @@ ergonomics that surfaced once a real client tried to integrate.
 - **AF-6.5:** `confirmationMessage` HTML-escaped (closes AF-2.11). ✓
 - **AF-6.6:** SPEC §7.3 Step 0 "no CSRF token upstream" guidance. ✓
 - **AF-6.7:** GUIDE front-matter — v1.0.0 walks-away commitment. ✓
+
+**v0.1.5 — addypin POC findings:**
+
+addypin completed a node:http POC against v0.1.4 and surfaced a
+mode-A blocker (no programmatic entry) plus four ergonomics. v0.1.5
+closes them; addypin pins to it.
+
+- **AF-7.1:** Empty-body warning when a body parser ate the stream
+  (closes AF-2.16). ✓
+- **AF-7.2:** GUIDE clarifies non-browser caller behavior on POST
+  /login + dev-mode silent-miss hint when devLogMagicLinks is on. ✓
+- **AF-7.3:** `auth.startLogin({email, nextUrl, sourceIp})` —
+  programmatic entry for use-first-claim-later flows (closes
+  AF-2.14). SPEC §7.3a. ✓
+- **AF-7.4:** `auth.deriveHandle(email)` instance method (closes
+  AF-2.15). ✓
+- **AF-7.5:** `transportOverride` validated at startup (closes
+  AF-2.17). ✓
+- **AF-7.6:** `devLogMagicLinks` line tagged with `cfg.from` for
+  multi-instance disambiguation. ✓
+- **AF-7.7:** GUIDE "Constraints / install footprint" section. ✓
 
 ### 17.4 Note on FR-6 timing test (AF-1.8)
 

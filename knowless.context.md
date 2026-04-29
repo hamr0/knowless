@@ -141,6 +141,8 @@ const auth = knowless({
 | `handleFromRequest` | (req) | string \| null | Programmatic session resolver for in-process middleware. Returns the handle if the cookie is valid, else null. SPEC §9.4. |
 | `deleteHandle` | (handle: string) | void | Atomic delete of handle + tokens + sessions (FR-37a, GDPR) |
 | `revokeSessions` | (handle: string) | number | Drops every session for `handle` without deleting the account ("log out everywhere"). Returns rows removed. AF-6.1. |
+| `startLogin` | ({email, nextUrl?, sourceIp?}) | Promise\<{handle, submitted: true}\> | Programmatic magic-link send for "use first, claim later" flows. Same 12-step sham-work as form. SPEC §7.3a. AF-7.3. |
+| `deriveHandle` | (email: string) | string | HMAC-SHA256(secret, normalize(email)) using the configured secret. Use to compute owner-handles outside HTTP context. AF-7.4. |
 | `_sweep` | -- | void | Trigger one sweep tick on demand (tests, operator scripts). AF-5.3. |
 | `config` | -- | object | Merged effective config; safe to read (do not mutate) |
 | `close` | -- | void | Stops sweeper, closes mailer + store. Call on shutdown. |
@@ -437,9 +439,25 @@ rate-limits) belongs above the library.
     you're then responsible for not interpolating user data.
 
 14. **`devLogMagicLinks` is opt-in and dev-only.** When set true
-    AND SMTP submission fails, the magic link is printed to stderr.
-    On successful SMTP submission, nothing is logged. Sham
-    (silent-miss) submissions never log. Don't enable in production.
+    AND SMTP submission fails, the magic link is printed to stderr
+    tagged `[knowless dev:<from>]`. Sham (silent-miss) submissions
+    print a `silent-miss: ...` hint instead of a link — opt-in dev
+    only, since this leaks closed-reg state. Don't enable in
+    production.
+
+15. **POST /login: don't pre-parse the body.** knowless reads the
+    request stream itself. Any framework body parser mounted in
+    front of `auth.login` will silently steal the form data and
+    null-route the request. knowless emits a one-time
+    `console.warn` if it sees `Content-Length > 0` with an empty
+    body. AF-7.1.
+
+16. **Two adoption modes — Mode B (register-first) and Mode A
+    (use-first claim-later).** Mode B is the form (`auth.login`).
+    Mode A is `auth.startLogin({email, nextUrl, sourceIp})` for
+    "drop a pin, claim by email click" patterns. Both run the
+    identical 12-step sham-work flow; same FR-6 guarantee. Pick
+    per-action, not per-app.
 
 ## Constraints
 

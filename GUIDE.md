@@ -205,6 +205,95 @@ Fastify, Hono, `node:http` — all work. Each handler is a plain
 `(req, res) => Promise<void>` function. No framework hooks, no
 middleware injection.
 
+#### Trap: do NOT pre-parse the body
+
+knowless reads `POST /login`'s body itself. If a body parser
+middleware runs ahead of `auth.login` and consumes the stream,
+knowless sees an empty body and silently null-routes the request
+(as if no email was submitted). Symptoms: form posts return 200,
+no magic link arrives, no error logged.
+
+Express works in the example above because `express.urlencoded()`
+is mounted as application middleware but doesn't intercept the
+specific path. **On Hono / Fastify-without-body-plugin / raw
+node:http, mount `auth.login` directly with no body parser in
+front.** Same goes for `auth.logout` (it doesn't read a body, but
+keep the symmetry).
+
+knowless will emit a one-time `console.warn(...)` if it sees an
+empty body where `Content-Length > 0` — that's the canary for this
+bug.
+
+#### Trap: non-browser callers need an Origin header
+
+`POST /login` runs an Origin/Referer whitelist (CSRF defense, see
+the FAQ below). Browsers always send `Origin` on cross-origin
+POSTs, so the form path is fine. **Curl / scripts / server-to-
+server callers must send no Origin header at all** (knowless
+allows browser-absent requests) **or** an Origin matching your
+`cookieDomain`. If you set a foreign Origin, the request silently
+falls through to a sham send. For programmatic callers, prefer
+[`auth.startLogin()`](#mode-a-use-first-claim-later) over POSTing
+the form.
+
+### Two adoption modes (Mode A vs Mode B)
+
+knowless supports two UX flows out of the box. Pick per-action,
+not per-app — both can coexist.
+
+**Mode B — register-first (the default).** User must log in before
+performing the action. Wire `auth.login` / `auth.callback` as
+above; gate your action with `auth.handleFromRequest(req)`. Use
+when the action requires a session (account settings, paid
+features, anything you want tied to an identity at the moment of
+the action).
+
+```js
+app.post('/api/comments', (req, res) => {
+  const handle = auth.handleFromRequest(req);
+  if (!handle) return res.status(401).end();
+  // create comment owned by `handle`
+});
+```
+
+**Mode A — use-first, claim-later.** User performs the action
+without logging in; you capture their email and trigger a magic
+link. Clicking it opens a session and your callback handler
+"promotes" the deferred resource. Use for "drop a pin," "post a
+share link," "submit a paste" — patterns where forcing a login
+*before* the action would harm the UX.
+
+```js
+app.post('/api/pins', async (req, res) => {
+  const { email, lat, lng } = await readJsonBody(req);
+  const owner = auth.deriveHandle(email);          // AF-7.4
+  await db.insertPendingPin({ owner, lat, lng });  // your code
+  await auth.startLogin({                          // AF-7.3
+    email,
+    nextUrl: 'https://app.example.com/manage',
+    sourceIp: req.socket.remoteAddress,
+  });
+  res.status(202).end();  // "we'll email you the link"
+});
+
+// On callback, promote pending pins owned by the now-logged-in handle.
+app.get('/manage', (req, res) => {
+  const owner = auth.handleFromRequest(req);
+  if (!owner) return res.redirect('/login');
+  // db.promotePendingPinsFor(owner)
+});
+```
+
+`startLogin` runs the same 12-step sham-work flow as the form
+handler, so unknown emails, rate-limit hits, and real sends all
+return identical shapes — the caller can't observe which happened.
+This preserves FR-6 timing equivalence even for programmatic
+callers. See SPEC §7.3a for the full contract.
+
+`auth.deriveHandle(email)` returns the same opaque HMAC handle
+that the form path uses, without you having to import the helper
+or pass the secret around.
+
 ### Step 5: Pre-seed users (closed-registration mode, default)
 
 By default, knowless is closed: a handle must already exist before
@@ -465,3 +554,18 @@ than weakening the bar — see SPEC §14.5.
 Yes: `tokenTtlSeconds`. Don't set it absurdly high. Magic links
 that linger in inboxes are a phishing-amplification risk if the
 mail account is later compromised.
+
+## Constraints / install footprint
+
+- **Two direct dependencies.** `nodemailer` (SMTP submission) and
+  `better-sqlite3` (storage). Both audited and pinned at major
+  versions in `package.json`.
+- **~40 transitive packages** in a typical install. The bulk are
+  `nodemailer`'s ecosystem deps (mostly idle in our usage) and
+  `better-sqlite3`'s build-time prebuild fetcher. You may see one
+  deprecation warning during install for `prebuild-install` —
+  build-chain noise, not runtime code.
+- **Node ≥ 20.** Uses `node:util parseArgs`, `node:net BlockList`
+  for CIDR support, and `--env-file=` for the standalone server.
+- **No optional deps, no postinstall scripts** beyond `better-
+  sqlite3`'s native binding fetch.

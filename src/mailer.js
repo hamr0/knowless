@@ -151,6 +151,18 @@ export function createMailer(cfg) {
       auth: undefined,
     });
 
+  // AF-7.5: validate the resolved transport at startup. Without this,
+  // a malformed transportOverride (or a bare options bag mistaken for a
+  // transport) silently constructs something that throws "sendMail is
+  // not a function" only at first submission — which in production may
+  // be hours later. Fail fast at factory time instead.
+  if (typeof transport.sendMail !== 'function') {
+    throw new Error(
+      'mailer: transport has no sendMail() — if you passed transportOverride, ' +
+        'pass the result of nodemailer.createTransport(opts), not an opts bag.',
+    );
+  }
+
   return {
     async submit({ to, subject, body }) {
       if (typeof to !== 'string' || !ASCII_RE.test(to)) {

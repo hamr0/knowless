@@ -15,6 +15,62 @@ Versioning is [SemVer](https://semver.org/).
   not what the MTA did, so this is the closest we can get.
   Targeted for v0.2.0.
 
+## [0.1.5] — 2026-04-28
+
+addypin POC findings round. Adds programmatic magic-link entry
+(unblocks "use first, claim later" UX patterns), one ergonomic
+helper, two safety/diagnostic fixes, and three doc updates.
+
+### Added
+
+- **`auth.startLogin({email, nextUrl?, sourceIp?})`** — programmatic
+  entry that runs the same 12-step sham-work flow as `POST /login`
+  but skips Origin/honeypot (no browser context). Returns
+  `{handle, submitted: true}` — same shape on rate-limit / sham /
+  real to preserve FR-6 timing equivalence. Throws only on
+  programmer error. SPEC §7.3a. Closes AF-7.3.
+- **`auth.deriveHandle(email)`** — instance method that uses the
+  configured secret. Lets adopters compute owner-handles outside
+  HTTP context without spreading the secret across modules. Closes
+  AF-7.4.
+- **GUIDE.md "Two adoption modes" section** — Mode B (register-
+  first, the form) and Mode A (use-first-claim-later, programmatic).
+  Both supported, pickable per-action.
+- **GUIDE.md "Constraints / install footprint" section** — direct
+  deps, transitive count, deprecation-warning context. Closes AF-7.7.
+
+### Changed
+
+- **`devLogMagicLinks` lines now tagged with `cfg.from`** —
+  `[knowless dev:auth@app.example.com] magic link: ...`. Disambiguates
+  multi-instance dev logs. Closes AF-7.6.
+- **`devLogMagicLinks` + sham + SMTP-fail now prints a one-line
+  silent-miss hint** instead of staying silent. Surfaces the
+  closed-registration-is-on case that previously cost adopters
+  ~30min of debugging. Strictly opt-in dev mode. Closes AF-7.2.
+
+### Safety / diagnostics
+
+- **`createMailer` validates `transportOverride` at startup.** A
+  malformed override (e.g. an options bag mistaken for a transport)
+  throws fast with a pointed error instead of failing at first
+  submission. Closes AF-7.5.
+- **`POST /login` warns once on stderr when `Content-Length > 0`
+  but body is empty.** Catches the common non-Express trap of
+  mounting `express.urlencoded()` or similar body parsers ahead of
+  `auth.login` (which consumes the stream itself). One warning per
+  handler instance. Closes AF-7.1.
+
+### Documentation
+
+- **SPEC §7.3a** specifies the programmatic entry's contract: which
+  steps it skips (Origin, honeypot), why FR-6 still holds, and
+  what programmer-error throws look like.
+- **GUIDE.md** adds two traps for non-Express integrators (body-
+  parser conflict, Origin requirement) and a worked Mode-A example.
+- **knowless.context.md** lists `startLogin` + `deriveHandle` in the
+  public API table and adds gotchas 15–16.
+
 ## [0.1.4] — 2026-04-28
 
 First real-world integration release. Bugs and ergonomics surfaced

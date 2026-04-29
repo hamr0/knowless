@@ -182,6 +182,21 @@ export function createHandlers({ store, mailer, config }) {
   // Build once at handler creation; supports plain IPs and CIDRs (AF-6.3).
   const trustedProxies = buildTrustedPeers(cfg.trustedProxies);
 
+  // AF-7.1: emit at most one warning per handler instance about an
+  // upstream body parser swallowing the request body. Loud enough to
+  // notice in dev, quiet enough not to spam.
+  let emptyBodyWarned = false;
+  function warnEmptyBodyOnce() {
+    if (emptyBodyWarned) return;
+    emptyBodyWarned = true;
+    console.warn(
+      '[knowless] POST /login received an empty body but Content-Length > 0. ' +
+        'A body parser running ahead of this handler likely consumed the stream. ' +
+        'knowless reads req itself; do not mount express.urlencoded() / express.json() / ' +
+        'similar middleware in front of POST /login. (Warned once per instance.)',
+    );
+  }
+
   // SPEC §5.4 / FR-30: build the cookie-attribute suffix once. Secure is
   // emitted by default and omitted only when cookieSecure: false (localhost
   // dev). HttpOnly + SameSite=Lax are always set.
@@ -208,56 +223,46 @@ export function createHandlers({ store, mailer, config }) {
     res.end();
   }
 
-  async function login(req, res) {
-    // Step 0 — Origin / Referer validation (SPEC §7.3 Step 0, AF-4.3).
-    // CSRF defense: a malicious cross-origin page autosubmitting to /login
-    // would otherwise trigger magic-link sends to known emails. Exempt
-    // from FR-6 timing equivalence per SPEC §7.3.
-    if (!validateOrigin(req, cfg.cookieDomain)) {
-      sameResponse(res, '', '');
-      return;
-    }
-
-    let raw;
-    try {
-      raw = await readBody(req);
-    } catch {
-      sameResponse(res, '', '');
-      return;
-    }
-    const body = parseBody(raw, req.headers['content-type']);
-    const emailRaw = typeof body.email === 'string' ? body.email : '';
-    const honeypot = body[cfg.honeypotFieldName];
-    const nextRaw = body.next;
-
+  /**
+   * The 12-step sham-work flow, reusable by both POST /login and the
+   * programmatic auth.startLogin() entry. Returns {handle, isSham} so
+   * the form handler can drive its same-response and the programmatic
+   * caller can return the handle to its caller. See SPEC §7.3 (form)
+   * and §7.3a (programmatic). AF-7.3.
+   *
+   * Steps skipped depending on the entry point:
+   *   - Origin (§7.3 Step 0): form-only; programmatic callers are
+   *     trusted server-side code.
+   *   - Honeypot (§7.3 Step 2): form-only; no form context.
+   *
+   * Both entries run steps 1, 3, 4–12 identically — so the timing-
+   * equivalence guarantee (FR-6) holds for either.
+   *
+   * @returns {Promise<{handle: string|null, isSham: boolean,
+   *                    emailNorm: string, nextValidated: string|null}>}
+   *   handle is null only when the email failed to normalize (programmer
+   *   bug for startLogin; same-shape silent for /login).
+   */
+  async function runSendLink({ emailRaw, nextRaw, sourceIp }) {
     // Step 1: parse + normalize
     let emailNorm;
     try {
       emailNorm = normalize(emailRaw);
     } catch {
-      sameResponse(res, emailRaw, nextRaw);
-      return;
-    }
-
-    // Step 2: honeypot — exempt short-circuit (no sham work)
-    if (typeof honeypot === 'string' && honeypot.length > 0) {
-      sameResponse(res, emailNorm, nextRaw);
-      return;
+      return { handle: null, isSham: false, emailNorm: emailRaw, nextValidated: null };
     }
 
     // Step 3: per-IP rate limit on /login — exempt short-circuit
-    const ip = determineSourceIp(req, trustedProxies);
     if (
       rateLimitExceeded(
         store,
         'login_ip',
-        ip,
+        sourceIp,
         cfg.maxLoginRequestsPerIpPerHour,
         HOUR_MS,
       )
     ) {
-      sameResponse(res, emailNorm, nextRaw);
-      return;
+      return { handle: null, isSham: false, emailNorm, nextValidated: null };
     }
 
     // ---- Equivalent-work region begins (SPEC §7.3 step 4) ----
@@ -271,7 +276,7 @@ export function createHandlers({ store, mailer, config }) {
         rateLimitExceeded(
           store,
           'create_ip',
-          ip,
+          sourceIp,
           cfg.maxNewHandlesPerIpPerHour,
           HOUR_MS,
         )
@@ -323,18 +328,91 @@ export function createHandlers({ store, mailer, config }) {
       console.error('[knowless] mail submit failed:', err.message);
       // AF-6.2: dev-mode fallback. When SMTP is unreachable in local
       // development the operator otherwise has no way to obtain the magic
-      // link. Print it to stderr only when explicitly opted in. Sham
-      // submissions are NOT logged (would leak silent-miss outcome).
-      if (cfg.devLogMagicLinks && !isSham) {
-        const link = `${cfg.baseUrl}${cfg.linkPath}?t=${token.raw}`;
-        process.stderr.write(`[knowless dev] magic link: ${link}\n`);
+      // link. Print it to stderr only when explicitly opted in.
+      if (cfg.devLogMagicLinks) {
+        // AF-7.6: include `from` to disambiguate multi-instance logs.
+        const tag = `[knowless dev:${cfg.from}]`;
+        if (isSham) {
+          // AF-7.2 dev hint: silent-miss is by-design but in dev mode
+          // operators repeatedly debug "why no link?" — surface the
+          // reason. Only fires on opt-in dev mode + SMTP failure.
+          process.stderr.write(
+            `${tag} silent-miss: handle for "${emailNorm}" does not exist (openRegistration=${cfg.openRegistration})\n`,
+          );
+        } else {
+          const link = `${cfg.baseUrl}${cfg.linkPath}?t=${token.raw}`;
+          process.stderr.write(`${tag} magic link: ${link}\n`);
+        }
       }
     }
 
-    rateLimitIncrement(store, 'login_ip', ip, HOUR_MS);
-    if (isCreating) rateLimitIncrement(store, 'create_ip', ip, HOUR_MS);
+    rateLimitIncrement(store, 'login_ip', sourceIp, HOUR_MS);
+    if (isCreating) rateLimitIncrement(store, 'create_ip', sourceIp, HOUR_MS);
 
-    sameResponse(res, emailNorm, nextValidated ?? '');
+    return { handle, isSham, emailNorm, nextValidated };
+  }
+
+  async function login(req, res) {
+    // Step 0 — Origin / Referer validation (SPEC §7.3 Step 0, AF-4.3).
+    if (!validateOrigin(req, cfg.cookieDomain)) {
+      sameResponse(res, '', '');
+      return;
+    }
+
+    let raw;
+    try {
+      raw = await readBody(req);
+    } catch {
+      sameResponse(res, '', '');
+      return;
+    }
+    // AF-7.1: warn when a body parser ahead of us has consumed the stream.
+    // POST /login with Content-Length > 0 but empty raw body is the
+    // signature; without this, the request silently null-routes and the
+    // adopter loses 30 minutes wondering why magic links never arrive.
+    if (raw.length === 0) {
+      const cl = Number(req.headers?.['content-length']);
+      if (Number.isFinite(cl) && cl > 0) {
+        warnEmptyBodyOnce();
+      }
+    }
+    const body = parseBody(raw, req.headers['content-type']);
+    const emailRaw = typeof body.email === 'string' ? body.email : '';
+    const honeypot = body[cfg.honeypotFieldName];
+    const nextRaw = body.next;
+
+    // Step 2: honeypot — exempt short-circuit (no sham work)
+    if (typeof honeypot === 'string' && honeypot.length > 0) {
+      sameResponse(res, emailRaw, nextRaw);
+      return;
+    }
+
+    const sourceIp = determineSourceIp(req, trustedProxies);
+    const result = await runSendLink({ emailRaw, nextRaw, sourceIp });
+    sameResponse(res, result.emailNorm, result.nextValidated ?? '');
+  }
+
+  async function startLogin({ email, nextUrl, sourceIp = '' } = {}) {
+    // Programmer-error guards (AF-7.3). These DO throw; they're not
+    // silent-miss conditions, they're "you called the API wrong."
+    if (typeof email !== 'string' || email.length === 0) {
+      throw new Error('startLogin: email is required (string)');
+    }
+    if (nextUrl !== undefined && nextUrl !== null && typeof nextUrl !== 'string') {
+      throw new Error('startLogin: nextUrl must be a string when provided');
+    }
+    if (typeof sourceIp !== 'string') {
+      throw new Error('startLogin: sourceIp must be a string when provided');
+    }
+    const { handle } = await runSendLink({
+      emailRaw: email,
+      nextRaw: nextUrl ?? null,
+      sourceIp,
+    });
+    // Same-shape return: rate-limit / sham / real all collapse here.
+    // `handle` is the HMAC of the normalized email (or null if email
+    // was malformed). It leaks nothing about existence per FR-6.
+    return { handle, submitted: true };
   }
 
   async function callback(req, res) {
@@ -453,6 +531,7 @@ export function createHandlers({ store, mailer, config }) {
     logout,
     loginForm,
     handleFromRequest,
+    startLogin,
     validateNextUrl: (raw) => validateNextUrl(raw, cfg.baseUrl, cfg.cookieDomain),
     // exposed for tests
     _config: cfg,

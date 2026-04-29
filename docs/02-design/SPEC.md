@@ -596,6 +596,68 @@ Step 12 — Respond
   return same_response()
 ```
 
+### 7.3a Programmatic entry: `auth.startLogin()` (AF-7.3)
+
+knowless supports two adopter UX modes for magic-link login. Both
+share the same 12-step sham-work flow; they differ only in **where
+the email arrives from**.
+
+**Mode B — register-first (form-driven).** The browser POSTs the
+form to `/login`. This is §7.3 above. Use when the user is at a
+keyboard and the action they want to take requires a session
+first.
+
+**Mode A — use-first, claim-later (programmatic).** The user does
+something on your service (drops a pin, posts a comment, generates
+a share link) without being logged in. Your handler captures their
+email along with the action, calls `auth.startLogin({email,
+nextUrl, sourceIp})`, and the user receives the magic link by
+email. Clicking it opens a session and your `next` handler
+promotes the deferred resource to claimed. Use for "deferred-claim
+disposable resource" patterns.
+
+**Signature.**
+
+```js
+const { handle, submitted } = await auth.startLogin({
+  email,        // required, normalized internally
+  nextUrl,      // optional; same whitelist as the form's `next`
+  sourceIp,     // optional; counted against per-IP rate limit
+});
+```
+
+**Behavioural contract.**
+
+- Runs **steps 1, 3, 4–12** of §7.3 verbatim.
+- **Skips step 0 (Origin / Referer).** The caller is trusted
+  server-side code; there is no browser context to validate.
+- **Skips step 2 (honeypot).** No form context.
+- **Throws** only on programmer error (missing email, invalid
+  argument types). Rate-limit, sham, normalize-failure are
+  silent same-shape outcomes.
+- **Returns** `{handle, submitted: true}` on every non-throw
+  path. `handle` is `null` only when the email failed to
+  normalize (also the form's silent path). `submitted: true`
+  is the lie that preserves FR-6 timing equivalence — an
+  external observer cannot distinguish "real send,"
+  "sham send," or "rate-limited drop" from the return value
+  alone.
+
+**Why skipping Origin / honeypot doesn't weaken FR-6.** The
+timing-equivalence guarantee is about hit/miss observability
+through the **email channel** and **HTTP response shape**.
+A programmatic caller has neither: it has the return value of a
+local function call. Origin and honeypot exist to protect the
+form path; they have no semantic meaning for in-process code.
+The 12-step sham work that produces the timing equivalence
+(steps 4–12) is identical for both entries.
+
+**Rate limits still apply.** A buggy adopter calling
+`startLogin` in a loop will trip `maxLoginRequestsPerIpPerHour`
+exactly as a buggy form would. The default IP-string for
+programmatic callers is `''` (empty); supply a real `sourceIp`
+to make the limit meaningful per actual user.
+
 ### 7.4 Sham-mail destination (RESOLUTION OF OPEN QUESTION)
 
 **Decision:** the silent-miss path submits the mail to a

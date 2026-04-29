@@ -1,6 +1,7 @@
 import { createStore } from './store.js';
 import { createMailer } from './mailer.js';
 import { createHandlers } from './handlers.js';
+import { deriveHandle as deriveHandleRaw } from './handle.js';
 
 /** Default sweeper tick: 5 minutes. Per FR-13. */
 const DEFAULT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
@@ -141,6 +142,16 @@ export function knowless(options = {}) {
      *  "Log out everywhere." Returns the number of sessions removed.
      *  AF-6.1. */
     revokeSessions: (handle) => store.revokeSessions(handle),
+    /** Programmatic magic-link send. Use this for "use first, claim
+     *  later" UX flows (drop a pin, post a comment, then confirm via
+     *  email). Returns `{handle, submitted: true}` — same shape on
+     *  rate-limit / sham / real to preserve FR-6 timing equivalence.
+     *  See SPEC §7.3a. AF-7.3. */
+    startLogin: handlers.startLogin,
+    /** Derive the opaque handle for an email using the configured
+     *  secret. Lets adopters compute owner-handles outside HTTP context
+     *  without spreading the secret across modules. AF-7.4. */
+    deriveHandle: (email) => deriveHandleRaw(email, options.secret),
     /** Effective config (with defaults applied), useful for routing. */
     config: handlers._config,
     /** Run a sweep tick on demand. Useful for tests and operator scripts. */
