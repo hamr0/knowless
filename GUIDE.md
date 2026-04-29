@@ -62,8 +62,8 @@ built-in auth is either missing or weak. The existing alternatives
 (Authelia, Authentik, Keycloak, oauth2-proxy) are heavyweight for
 the job: "redirect to login if no cookie, otherwise let through."
 
-knowless's standalone server (v0.2.0, in development) sits behind
-Caddy / nginx / Traefik via forward-auth. One auth subdomain, one
+knowless's standalone server (`bin/knowless-server`, shipped in
+v0.1.3) sits behind Caddy / nginx / Traefik via forward-auth. One auth subdomain, one
 session cookie scoped to the parent eTLD+1, SSO across all your
 services for free.
 
@@ -106,7 +106,7 @@ nothing else*.
 - **Walks away at v1.0.0.** Maintenance mode (security patches +
   bug fixes) after that, by design.
 
-## Walkthrough: library mode (v0.1.0)
+## Walkthrough: library mode
 
 The shape: import `knowless`, configure it, mount the handlers on
 your HTTP framework.
@@ -175,7 +175,9 @@ sending domain):
 Without all three, Gmail / Outlook will silently drop your auth
 mail. This is the operator commitment knowless asks of you.
 
-> Full Postfix walkthrough lives in `OPS.md` (shipping with v0.2.0).
+> Full Postfix walkthrough lives in [`OPS.md`](OPS.md) — Postfix
+> install, null-route, SPF/DKIM/PTR, systemd, reverse-proxy
+> forward-auth examples, multi-process deployments.
 
 ### Step 4: Mount the handlers
 
@@ -402,11 +404,10 @@ Library doesn't ship a built-in HTTP endpoint for this — operator
 chooses the UX (admin CLI, in-app self-service, ticket-driven
 support).
 
-## Walkthrough: standalone server mode (v0.2.0, coming)
+## Walkthrough: standalone server mode
 
-The shape: run `npx knowless-server`, point Caddy / nginx /
-Traefik at it for forward-auth, protect any HTTP service behind
-magic-link login.
+Run `npx knowless-server`, point Caddy / nginx / Traefik at it for
+forward-auth, protect any HTTP service behind magic-link login.
 
 The deployment-shape pattern:
 ```
@@ -418,7 +419,9 @@ The deployment-shape pattern:
                 [Caddy redirects to auth.example.com/login?next=...]
 ```
 
-Sample Caddyfile (forthcoming OPS.md will have the full setup):
+Sample Caddyfile (full setup including TLS/ACME + multiple gated
+services lives in [`OPS.md`](OPS.md) §7):
+
 ```caddy
 auth.example.com {
     reverse_proxy localhost:8080
@@ -427,7 +430,7 @@ auth.example.com {
 kuma.example.com {
     forward_auth localhost:8080 {
         uri /verify
-        copy_headers X-User-Handle
+        copy_headers X-Knowless-Handle
     }
     reverse_proxy localhost:3001  # Uptime Kuma
 }
@@ -435,7 +438,7 @@ kuma.example.com {
 adguard.example.com {
     forward_auth localhost:8080 {
         uri /verify
-        copy_headers X-User-Handle
+        copy_headers X-Knowless-Handle
     }
     reverse_proxy localhost:3000  # AdGuard Home
 }
@@ -444,9 +447,11 @@ adguard.example.com {
 One auth subdomain, one cookie, SSO across all gated services
 because the cookie is scoped to the parent eTLD+1.
 
-Until v0.2.0, you can replicate this yourself with ~30 lines of
-`node:http` wrapping the library-mode handlers — see
-`knowless.context.md` for the pattern.
+Configuration is via `KNOWLESS_*` env vars — see
+[`config.example.env`](config.example.env) and run
+`knowless-server --help` for the full list. `knowless-server
+--config-check` validates your env, SMTP reachability, and DB
+write access; suitable for systemd `ExecStartPre`.
 
 ## Configuration reference
 

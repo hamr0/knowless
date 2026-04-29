@@ -1,7 +1,7 @@
 # knowless -- Integration Guide
 
 > For AI assistants and developers wiring knowless into a project.
-> v0.1.0 | Node.js >= 20 | 2 deps (nodemailer, better-sqlite3) | Apache-2.0
+> v0.1.8 | Node.js >= 20 | 2 deps (nodemailer, better-sqlite3) | Apache-2.0
 
 ## What this is
 
@@ -18,11 +18,13 @@ npm install knowless
 
 Two integration paths:
 
-1. **Library mode (v0.1.0):** `import { knowless } from 'knowless'` --
-   mount five handlers on Express / Fastify / Hono / `node:http`
-2. **Standalone server (v0.2.0, in development):** `npx knowless-server` --
-   forward-auth gateway for Caddy / nginx / Traefik in front of
-   no-auth services like Uptime Kuma, AdGuard, Pi-hole
+1. **Library mode:** `import { knowless } from 'knowless'` --
+   mount five handlers on Express / Fastify / Hono / `node:http`,
+   gate your endpoints with `auth.handleFromRequest(req)`.
+2. **Standalone server:** `npx knowless-server` -- forward-auth
+   gateway for Caddy / nginx / Traefik in front of no-auth services
+   like Uptime Kuma, AdGuard, Pi-hole. Configured via `KNOWLESS_*`
+   env vars; see [`OPS.md`](OPS.md) for the full deployment guide.
 
 This document is the dense reference. For the why, see
 `docs/01-product/PRD.md`. For the wire formats, see
