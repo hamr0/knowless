@@ -162,6 +162,25 @@ sudo postmap /etc/postfix/transport
 sudo systemctl reload postfix
 ```
 
+**Verify the null-route is catching mail.** A misconfigured
+null-route doesn't surface until the first sham submission — by
+which point you're debugging a silent-202 from a real form post.
+One-line check, no knowless code needed:
+
+```
+sudo apt install swaks   # one-time, if not present
+swaks --to null@knowless.invalid --server localhost:25 --quit-after RCPT
+sudo journalctl -u postfix --since '1 minute ago' | grep -i 'discard'
+```
+
+A `discard:` line in the postfix log confirms `transport_maps` is
+applied. If you see `relay=` / `delivered` / a queue ID with no
+discard, re-run `postmap` + `systemctl reload postfix` and try
+again. (knowless deliberately does NOT ship a `--check-null-route`
+CLI for this — operator MTA validation is operator-side, and adding
+a wrapper for a one-line `swaks` invocation would carry maintenance
+burden into the v1.0.0 walk-away window for no real value.)
+
 Then the DNS records — set on your sending domain, **not** your
 app's primary domain (typical setup: `auth.example.com` is the
 sending domain):
@@ -632,6 +651,24 @@ Full options table:
 | `mailer` | no | (built-in nodemailer) | Inject your own mailer. |
 
 ## FAQ
+
+### Is there an official knowless Docker image?
+
+No. knowless does not ship a turnkey image with Postfix + null-route
++ the binary pre-baked. The reasoning: a Docker image bundling
+Postfix wouldn't actually save the operator from the work that
+matters (SPF / DKIM / PTR records on your sending domain, outbound
+port 25 unblocked at your hosting provider, reverse DNS pointed at
+your sending hostname — all done outside the container regardless),
+and shipping a Postfix image would commit a walk-away library to a
+permanent CVE-rebuild cadence. The OPS.md walkthrough is the
+canonical install path; a fresh VPS to working forward-auth takes
+30–60 minutes of one-time setup, and then it stays put.
+
+If a community Dockerfile emerges (open invitation — knowless is
+Apache-2.0), OPS.md will link to it. Until then, run
+`knowless-server` as a systemd unit alongside Postfix as the OPS
+walkthrough lays out.
 
 ### Why doesn't knowless block disposable email domains?
 

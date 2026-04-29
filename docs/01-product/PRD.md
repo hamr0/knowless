@@ -561,8 +561,14 @@ parent-domain scoped.
 - [x] Token expiry test passes
 - [x] Full integration test (HTTP login → email send via test
       Postfix → click → handle returned) passes
-- [ ] Forward-auth integration test (Caddy + standalone server +
-      mock protected service) passes — TASKS 6.8, deferred
+- [x] Forward-auth integration covered — addypin runs knowless
+      behind Caddy in production. Per the 2026-04-29 walk-away
+      stress-test (CHANGELOG.md "Cut from v0.2.x backlog"), real
+      adopter use is stronger evidence than a docker-compose CI
+      test would be. The previously-deferred TASKS 6.8 docker-
+      compose harness was cut — every hop is already covered by
+      `forward-auth-next.test.js` + `cli.test.js`, and the
+      Caddy↔knowless contract is two HTTP responses + one header.
 - [x] README example works copy-pasted by an external developer
       (validated by addypin integration: ~1,150 LOC removed,
       ~35 added)
@@ -570,8 +576,10 @@ parent-domain scoped.
       checklists for Ubuntu/Debian
 - [x] `npx knowless-server` works from a fresh install
 - [x] Published to npm
-- [ ] Cross-linked from gitdone and addypin READMEs — manual on
-      those repos; not editable from knowless
+- [x] Cross-linking moved out of knowless-repo scope — the README
+      edits live in the addypin and gitdone repos (not editable
+      from here). Tracked in those repos' TODO; not a knowless
+      gate. (Per the 2026-04-29 stress-test.)
 
 ### 6.2 30-day post-launch criteria
 
@@ -580,7 +588,10 @@ parent-domain scoped.
       drove AF-7 → AF-17**
 - [ ] At least one external self-hoster has deployed
       `knowless-server` for a real service (standalone mode) —
-      pending; v0.2.0 turnkey Docker image will accelerate this
+      pending. Originally expected to be accelerated by a turnkey
+      Docker image (cut 2026-04-29 — see CHANGELOG.md "Cut from
+      v0.2.x backlog"); the OPS.md from-zero-VPS walkthrough
+      remains the canonical path.
 - [x] No unresolved security issues
 - [x] No silent-on-miss regressions
 - [x] Documentation answers the top 5 user questions without
@@ -2514,6 +2525,29 @@ worked reasoning, not just the conclusions.
   #19). Returns `{handle, submitted: true}` for every branch by
   design (FR-6); operator visibility lives in AF-19's hooks, never
   in the per-call return shape. ✓
+
+**v0.2.1 post-release scope cull (walk-away stress-test, 2026-04-29):**
+
+After v0.2.1 shipped, the v0.2.x Unreleased backlog was stress-tested
+against the same walk-away discipline that produced AF-19 through
+AF-22. All three items failed and were cut from tracking. Recorded
+here so future contributors don't re-propose them.
+
+- **AF-23: Caddy forward-auth Docker integration test (TASKS 6.8) —
+  CUT.** addypin runs knowless behind Caddy in production; that is
+  the integration test, with adopter signal stronger than any
+  docker-compose CI. Removed from PRD §6.1 graduation criteria.
+- **AF-24: `knowless-server --check-null-route` CLI probe — CUT.**
+  Operator-side MTA setup-correctness check, not identity layer.
+  Same probe is achievable in three lines of `swaks` + `tail
+  /var/log/maillog`; documented in GUIDE.md Step 3 instead of
+  shipped as a CLI feature.
+- **AF-25: Turnkey Docker image (`knowless/knowless-server:0.2.x`) —
+  CUT.** Doesn't solve the actual operator problem (DNS / port-25
+  work still required), saves only ~5 minutes of `apt install`. Cost
+  side is permanent: Postfix CVE cadence would commit a walk-away
+  library to forever-rebuilds. If a community Dockerfile emerges,
+  OPS.md will link to it; knowless does not ship one.
 
 **Rejected during AF-19/20 design (kept here for the record):**
 

@@ -363,6 +363,21 @@ transport_maps = hash:/etc/postfix/transport
 postmap /etc/postfix/transport && systemctl reload postfix
 ```
 
+Verify the null-route is actually discarding (one-line operator
+check, no knowless code involved):
+
+```
+swaks --to null@knowless.invalid --server localhost:25 --quit-after RCPT
+journalctl -u postfix --since '1 minute ago' | grep 'discard'
+```
+
+A `discard:` line in the postfix log confirms the null-route caught
+the message. If you see `relay=` or `delivered`, the
+`transport_maps` entry isn't being applied — re-run `postmap` and
+`systemctl reload postfix`. (No `--check-null-route` CLI in
+knowless: an operator's MTA validation lives with the MTA, not
+inside a walk-away library.)
+
 ## FR-6: timing equivalence (the testable property)
 
 The library ships a CI test (`test/integration/timing.test.js`)

@@ -17,54 +17,44 @@ pin-confirmation state machine, fingerprint helpers, matching tests),
 integration drove audit findings AF-7 → AF-17, all shipped in
 v0.1.5–v0.1.10. See PRD §17 for the closed backlog.
 
-**Genuinely open items (not blocking adopters):**
+**No open items. v0.2.1 is feature-complete.**
 
-1. **6.8 — Caddy forward-auth Docker integration test.** Spin up
-   `knowless-server` + Caddy + a stub upstream in containers; drive
-   the full "request → 401 → magic link → 303 → upstream serves"
-   round-trip. A skip-on-no-docker placeholder exists in
-   `test/integration/cli.test.js`. ~2 hours of `docker compose`
-   orchestration. Optional polish — every individual hop is already
-   covered by unit + integration tests.
-2. **7.6 — Cross-link from sibling-project READMEs.** addypin already
-   references knowless via the integration commit; the cross-link
-   from the addypin README itself is a manual one-line bullet on
-   that repo. `gitdone` similar.
-3. **v0.2.0 backlog:**
-   - **Turnkey Docker image** — `knowless/knowless-server:0.2.x`
-     bundling Postfix + null-route + the binary so a self-hoster
-     runs `docker compose up` and has a working auth gateway in
-     one step. Materially shortens the PRD §4.2 self-hoster
-     onboarding from ~30–60 min of OPS.md walking to single-digit
-     minutes. Tasks: image Dockerfile + entrypoint with healthcheck;
-     `docker-compose.yml` example wiring it to Caddy; CI build to
-     GHCR; image vulnerability scanning; OPS.md "Quick start with
-     Docker" section. ~6–8 hours.
-   - `knowless-server --check-null-route` CLI probe — submits a test
-     message to `shamRecipient` and confirms the local MTA discarded
-     it (closest the library can get to verifying operator setup).
-     ~2 hours.
+Three items previously tracked here as "open" were stress-tested
+against walk-away-at-v1.0.0 (2026-04-29) and cut. Closures recorded
+here for posterity:
 
-**v1.0.0 graduation status:** 12/14 PRD §6.1 criteria met. The two
-not-met are 6.8 and 7.6 above; both are gravy, neither is blocking.
-The library is production-ready by every other measure — proven by
-the addypin merge.
+1. **6.8 — Caddy forward-auth Docker integration test — CLOSED.**
+   The contract is two HTTP responses + one header (`/verify` →
+   200+`X-User-Handle` or 401). Every hop is already covered by
+   `forward-auth-next.test.js` + `cli.test.js`. addypin runs
+   knowless behind Caddy in production — that is the integration
+   test, stronger adopter signal than any docker-compose CI. Removed
+   as a v1.0.0 graduation criterion (PRD §6.1).
+2. **7.6 — Cross-link from sibling-project READMEs — MOVED.** Not a
+   knowless task; the README edits live in the addypin and gitdone
+   repos. Tracked there now, not here.
+3. **v0.2.x backlog (turnkey Docker image + `--check-null-route`
+   CLI) — CUT.** Both fail the walk-away discipline. Docker image
+   doesn't solve the actual operator problem (DNS / port-25 work
+   still required) and commits the library to forever-rebuilds on
+   Postfix CVEs. `--check-null-route` is achievable in three lines
+   of `swaks` + `tail` — documented in GUIDE.md Step 3 instead.
+   Full rationale in CHANGELOG.md "Cut from v0.2.x backlog".
 
-## A note on Docker (the two senses, not to be confused)
+**v1.0.0 graduation status:** 12/12 (post-cut). All shippable
+criteria met. addypin runs knowless in production. Standalone-server
+adoption (the open §6.2 item) is tracked outside this repo and does
+not gate v1.0.0 — that's a 30-day post-launch criterion, not a
+graduation gate.
 
-knowless mentions Docker in two distinct contexts:
+## A note on Docker
 
-- **Test harness (TASKS 6.8 above).** Use Docker only at test time
-  to verify forward-auth works against a real reverse proxy. Not a
-  release artifact. Skipped automatically on hosts without Docker.
-- **Turnkey image (planned for v0.2.0).** A pre-baked
-  `knowless/knowless-server:0.2.x` image bundling Postfix +
-  null-route + the binary so a self-hoster runs `docker compose
-  up` and has a working auth gateway in one step. Release artifact,
-  materially valuable for the self-hoster audience (PRD §4.2).
-  Tracked under v0.2.0 backlog above.
-
-The pending v1.0 criterion is the test (6.8), not the image.
+Docker is mentioned in this repo as **deployment shape only** — a
+self-hoster may choose to containerize knowless-server alongside
+their own Postfix, with their own Dockerfile or docker-compose.
+Knowless does not ship an official image. Postfix CVE cadence makes
+shipping a bundled image incompatible with walk-away-at-v1.0.0.
+If community Dockerfiles emerge, OPS.md will link to them.
 
 ---
 

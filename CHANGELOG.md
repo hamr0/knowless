@@ -15,14 +15,13 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-- **Turnkey Docker image** (`knowless/knowless-server:0.2.x`)
-  bundling Postfix + null-route + the binary. Now meaningfully
-  smaller and faster to build because v0.2.0 dropped the native
-  compile dep.
-- Caddy forward-auth Docker integration test (TASKS.md 6.8).
-- `knowless-server --check-null-route`: CLI probe that submits a
-  test message to `shamRecipient` and confirms the local MTA
-  discarded it.
+**v0.2.1 is feature-complete.** v1.0.0 is the planned next release —
+walk-away promotion, no API changes. Three items previously tracked
+here were cut after stress-testing them against the
+walk-away-at-v1.0.0 lens; rationale for each kept in this changelog
+under the v0.2.1 release block (see "Cut from v0.2.x backlog" below)
+so future contributors see the worked reasoning, not just the
+omissions.
 
 ## [0.2.1] — 2026-04-29
 
@@ -109,6 +108,36 @@ accessor, hashcash, `lookupMessageId()`, `onShamHit`).
   semantics, heartbeat behavior, counter reset, hook-error
   containment, and `verifyTransport()` resolve/reject paths.
   Test count: 192 → 207.
+
+### Cut from v0.2.x backlog (kept here for the record)
+
+Three items previously listed under Unreleased were stress-tested
+against walk-away-at-v1.0.0 and cut. Rationale per item, so future
+contributors see why these aren't being re-proposed:
+
+- **`knowless-server --check-null-route` CLI probe — CUT.** Operator
+  setup-correctness check, not identity layer. The same probe is
+  three commands of `swaks` + `tail /var/log/maillog`; documented in
+  GUIDE.md Step 3. Adding a knowless CLI feature for it would carry
+  maintenance burden into walk-away for something an operator can
+  already do with a one-line shell command.
+- **Caddy forward-auth Docker integration test (TASKS 6.8) — CUT.**
+  The contract under test is two HTTP responses and one header
+  (`/verify` → 200+`X-User-Handle` or 401). Every hop is already
+  covered by `forward-auth-next.test.js` + `cli.test.js`. addypin
+  runs knowless behind Caddy in production — that is the integration
+  test, with adopter signal stronger than any docker-compose CI
+  could provide. Removed as a v1.0.0 graduation criterion;
+  PRD §6.1 updated.
+- **Turnkey Docker image (`knowless/knowless-server:0.2.x`) — CUT.**
+  Doesn't actually solve the operator problem: SPF / DKIM / PTR /
+  outbound-port-25 work is still the operator's, image only saves
+  ~5 minutes of `apt install postfix && postmap`. Cost-side is
+  permanent: Postfix is on a CVE drumbeat, and a walk-away library
+  shipping a Postfix image would commit to forever-rebuilds —
+  exactly the opposite of walk-away discipline. If a self-hoster
+  builds a community Dockerfile, OPS.md will link to it; knowless
+  itself doesn't ship one.
 
 ## [0.2.0] — 2026-04-28
 
