@@ -137,6 +137,10 @@ export function knowless(options = {}) {
     handleFromRequest: handlers.handleFromRequest,
     /** Delete a handle + all tokens + all sessions atomically (FR-37a). */
     deleteHandle: (handle) => store.deleteHandle(handle),
+    /** Revoke every session for `handle` without deleting the handle.
+     *  "Log out everywhere." Returns the number of sessions removed.
+     *  AF-6.1. */
+    revokeSessions: (handle) => store.revokeSessions(handle),
     /** Effective config (with defaults applied), useful for routing. */
     config: handlers._config,
     /** Run a sweep tick on demand. Useful for tests and operator scripts. */

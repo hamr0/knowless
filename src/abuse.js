@@ -1,3 +1,62 @@
+import net from 'node:net';
+
+/**
+ * Build a peer-IP matcher from a list of plain IPs and/or CIDR ranges.
+ * AF-6.3 — CIDR support so docker / k8s / cgnat ranges can be trusted
+ * without enumerating every address.
+ *
+ * Accepts:
+ *   - bare IPv4/IPv6 ("127.0.0.1", "::1")
+ *   - CIDR ("10.0.0.0/8", "fd00::/8")
+ *   - a Set or array of either
+ *   - a `node:net` BlockList (passed through)
+ *
+ * @param {Set<string>|string[]|net.BlockList} trustedProxies
+ * @returns {{ has: (ip: string) => boolean }}
+ */
+export function buildTrustedPeers(trustedProxies) {
+  if (trustedProxies && typeof trustedProxies.check === 'function') {
+    return { has: (ip) => safeBlockListCheck(trustedProxies, ip) };
+  }
+  const list = Array.isArray(trustedProxies)
+    ? trustedProxies
+    : trustedProxies instanceof Set
+      ? [...trustedProxies]
+      : [];
+  const exact = new Set();
+  const block = new net.BlockList();
+  for (const entry of list) {
+    if (typeof entry !== 'string' || !entry) continue;
+    const slash = entry.indexOf('/');
+    if (slash >= 0) {
+      const addr = entry.slice(0, slash);
+      const prefix = Number(entry.slice(slash + 1));
+      const family = net.isIPv6(addr) ? 'ipv6' : 'ipv4';
+      try {
+        block.addSubnet(addr, prefix, family);
+      } catch {
+        /* skip malformed CIDR rather than crash */
+      }
+    } else {
+      exact.add(entry);
+    }
+  }
+  return {
+    has: (ip) => exact.has(ip) || safeBlockListCheck(block, ip),
+  };
+}
+
+function safeBlockListCheck(block, ip) {
+  if (typeof ip !== 'string' || ip.length === 0) return false;
+  const family = net.isIPv6(ip) ? 'ipv6' : net.isIPv4(ip) ? 'ipv4' : null;
+  if (!family) return false;
+  try {
+    return block.check(ip, family);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Determine the source IP of a request per FR-42 and SPEC §7.6.
  *
@@ -6,19 +65,20 @@
  * fall back to the connection's remote address. This prevents IP
  * spoofing from clients while supporting forward-auth deployments.
  *
+ * `trustedProxies` accepts plain IPs and CIDR ranges (AF-6.3).
+ *
  * @param {{
  *   socket?: { remoteAddress?: string },
  *   connection?: { remoteAddress?: string },
  *   headers?: Record<string, string|string[]|undefined>
  * }} req a node:http request (or shape-compatible)
- * @param {Set<string>|string[]} trustedProxies set or array of trusted peer IPs
+ * @param {Set<string>|string[]|net.BlockList} trustedProxies trusted peer IPs / CIDRs
  * @returns {string} the determined IP, or '' if undeterminable
  */
 export function determineSourceIp(req, trustedProxies) {
   const peer =
     req?.socket?.remoteAddress ?? req?.connection?.remoteAddress ?? '';
-  const trusted =
-    trustedProxies instanceof Set ? trustedProxies : new Set(trustedProxies ?? []);
+  const trusted = buildTrustedPeers(trustedProxies);
   if (!trusted.has(peer)) {
     return peer;
   }

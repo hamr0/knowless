@@ -629,3 +629,178 @@ test('login form GET: renders the bare form with hidden next', () => {
   );
   h.close();
 });
+
+// --- AF-6.1: revokeSessions ---
+
+test('revokeSessions: drops every session for handle, keeps account (AF-6.1)', async () => {
+  const h = newHarness();
+  // Issue two sessions for alice by going through login/callback twice.
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  for (let i = 0; i < 2; i++) {
+    const before = h.sentMail.length;
+    await postLogin(h.handlers, formBody({ email: REGISTERED }));
+    const tok = extractToken(h.sentMail[before].raw);
+    await getCallback(h.handlers, tok);
+  }
+  const handle = deriveHandle(REGISTERED, TEST_SECRET);
+  // Sanity: handle still exists.
+  assert.equal(h.store.handleExists(handle), true);
+
+  // Hand the public API a string handle and confirm rows go.
+  const auth = { revokeSessions: (hd) => h.store.revokeSessions(hd) };
+  const removed = auth.revokeSessions(handle);
+  assert.equal(removed, 2);
+
+  // Handle survives — this is "log out everywhere," not deleteHandle.
+  assert.equal(h.store.handleExists(handle), true);
+  // Calling again is a no-op.
+  assert.equal(auth.revokeSessions(handle), 0);
+  h.close();
+});
+
+// --- AF-6.4: POST /logout Origin validation ---
+
+test('logout: cross-origin POST is rejected with 403 (AF-6.4)', async () => {
+  const h = newHarness();
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  // Get a real session cookie first.
+  await postLogin(h.handlers, formBody({ email: REGISTERED }));
+  const tok = extractToken(h.sentMail[0].raw);
+  const cb = await getCallback(h.handlers, tok);
+  const sessionCookie = parseSetCookie(cb._headers['set-cookie']).value;
+  const handle = deriveHandle(REGISTERED, TEST_SECRET);
+
+  // Cross-origin POST /logout
+  const evil = fakeReq({
+    method: 'POST',
+    url: '/logout',
+    headers: { origin: 'https://evil.example.org', cookie: `knowless_session=${sessionCookie}` },
+  });
+  const evilRes = fakeRes();
+  await h.handlers.logout(evil, evilRes);
+  assert.equal(evilRes.statusCode, 403);
+  // Session NOT killed.
+  assert.match(h.handlers.handleFromRequest(
+    fakeReq({ headers: { cookie: `knowless_session=${sessionCookie}` } }),
+  ) ?? '', new RegExp(handle));
+
+  // Same-origin POST works.
+  const ok = fakeReq({
+    method: 'POST',
+    url: '/logout',
+    headers: { origin: 'https://app.example.com', cookie: `knowless_session=${sessionCookie}` },
+  });
+  const okRes = fakeRes();
+  await h.handlers.logout(ok, okRes);
+  assert.equal(okRes.statusCode, 200);
+  h.close();
+});
+
+// --- AF-6.5: confirmationMessage HTML escaping ---
+
+test('renderLoginForm: confirmationMessage is HTML-escaped (AF-6.5)', () => {
+  const h = newHarness({
+    confirmationMessage: '<script>alert(1)</script>{email}',
+  });
+  // Trigger sameResponse via a POST to render the message branch.
+  const req = fakeReq({
+    method: 'POST',
+    url: '/login',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      origin: 'https://app.example.com',
+    },
+    body: formBody({ email: REGISTERED }),
+  });
+  const res = fakeRes();
+  return h.handlers.login(req, res).then(() => {
+    assert.equal(res.statusCode, 200);
+    assert.equal(res._body.includes('<script>alert(1)</script>'), false);
+    assert.match(res._body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    h.close();
+  });
+});
+
+// --- AF-6.2: devLogMagicLinks ---
+
+test('devLogMagicLinks: prints link to stderr only when SMTP fails AND opt-in (AF-6.2)', async () => {
+  const stderrChunks = [];
+  const origWrite = process.stderr.write.bind(process.stderr);
+  process.stderr.write = (chunk) => {
+    stderrChunks.push(String(chunk));
+    return true;
+  };
+  try {
+    // Build a harness whose mailer always throws on submit.
+    const h = newHarness({
+      openRegistration: true,
+      devLogMagicLinks: true,
+    });
+    h.handlers._config.mailer = null;
+    // Patch mailer.submit to throw — easier than rebuilding the harness.
+    const realSubmit = h.mailer.submit;
+    h.mailer.submit = async () => { throw new Error('connect ECONNREFUSED'); };
+
+    await postLogin(
+      h.handlers,
+      formBody({ email: REGISTERED }),
+      { origin: 'https://app.example.com' },
+    );
+
+    const printed = stderrChunks.join('');
+    assert.match(printed, /\[knowless dev\] magic link: https:\/\/app\.example\.com\/auth\/callback\?t=/);
+
+    h.mailer.submit = realSubmit;
+    h.close();
+  } finally {
+    process.stderr.write = origWrite;
+  }
+});
+
+test('devLogMagicLinks: silent when opt-in is off (AF-6.2)', async () => {
+  const stderrChunks = [];
+  const origWrite = process.stderr.write.bind(process.stderr);
+  process.stderr.write = (chunk) => {
+    stderrChunks.push(String(chunk));
+    return true;
+  };
+  try {
+    const h = newHarness({ openRegistration: true });
+    h.mailer.submit = async () => { throw new Error('boom'); };
+    await postLogin(
+      h.handlers,
+      formBody({ email: REGISTERED }),
+      { origin: 'https://app.example.com' },
+    );
+    const printed = stderrChunks.join('');
+    assert.equal(printed.includes('magic link:'), false);
+    h.close();
+  } finally {
+    process.stderr.write = origWrite;
+  }
+});
+
+test('devLogMagicLinks: never prints for sham (silent-miss) submissions (AF-6.2)', async () => {
+  const stderrChunks = [];
+  const origWrite = process.stderr.write.bind(process.stderr);
+  process.stderr.write = (chunk) => {
+    stderrChunks.push(String(chunk));
+    return true;
+  };
+  try {
+    // Closed-reg + unregistered email → sham path. Mailer fails so the
+    // dev-log code path is reached.
+    const h = newHarness({ devLogMagicLinks: true });
+    h.mailer.submit = async () => { throw new Error('boom'); };
+    await postLogin(
+      h.handlers,
+      formBody({ email: 'unknown@example.com' }),
+      { origin: 'https://app.example.com' },
+    );
+    const printed = stderrChunks.join('');
+    assert.equal(printed.includes('magic link:'), false);
+    h.close();
+  } finally {
+    process.stderr.write = origWrite;
+  }
+});

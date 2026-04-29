@@ -504,6 +504,16 @@ Step 0 — Origin / Referer validation (CSRF defense, AF-4.3)
   origin already knows their request shape; timing leaks
   nothing the request itself didn't expose.
 
+  **Adopter note (re: CSRF tokens):** the Origin / Referer
+  whitelist IS knowless's CSRF defense. Modern browsers always
+  emit `Origin` on cross-origin POSTs, so a CSRF token would
+  add complexity for negligible additional defense (the only
+  scenarios where Origin is missing are header-stripping
+  proxies and pre-2017 browsers, neither of which can safely
+  log a user in regardless). knowless deliberately does NOT
+  emit a CSRF token in `renderLoginForm`. Don't reinvent it
+  upstream.
+
 Step 1 — Parse and validate input
   email_raw = body.email
   honeypot  = body[honeypotName]
@@ -826,6 +836,14 @@ Cookie: knowless_session=<value>
 ### 10.2 Flow
 
 ```
+Step 0 — Origin / Referer validation (CSRF defense, AF-6.4)
+  Same algorithm as POST /login (§7.3 Step 0). If the request
+  carries an Origin or Referer whose hostname is not
+  cookieDomain or a subdomain, return 403. Browser-absent
+  (curl/programmatic) is allowed. SameSite=Lax alone does not
+  fully protect /logout against form POSTs from same-eTLD+1
+  attacker subdomains; the explicit Origin check closes that.
+
 verify cookie via verifySession (same as /verify)
 if valid:
   store.deleteSession(sid_hash)
@@ -835,12 +853,13 @@ clear cookie:
 return 200 OK with empty body
 ```
 
-### 10.3 Why POST, not GET
+### 10.3 Why POST, not GET, plus Origin validation
 
 GET-triggered logout enables CSRF: a malicious page embeds
 `<img src="https://auth.example.com/logout">` and silently
-logs the user out. POST + SameSite=Lax cookie is the safe
-combination.
+logs the user out. POST is the first defense; explicit
+Origin / Referer validation is the second. POST + Origin
+check + SameSite=Lax cookie is the safe combination.
 
 The library MAY also accept POSTs without a body. Operators
 who prefer a logout link in their UI should use a small

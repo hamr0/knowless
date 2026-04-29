@@ -45,6 +45,52 @@ test('determineSourceIp: undeterminable peer returns empty string', () => {
   assert.equal(determineSourceIp({ socket: {} }, []), '');
 });
 
+// --- AF-6.3: CIDR support in trustedProxies ---
+
+test('determineSourceIp: CIDR range honoured for trusted peer (AF-6.3)', () => {
+  const req = fakeReq('10.0.0.5', { 'x-forwarded-for': '203.0.113.7' });
+  // 10.0.0.0/8 covers the peer.
+  assert.equal(determineSourceIp(req, ['10.0.0.0/8']), '203.0.113.7');
+});
+
+test('determineSourceIp: CIDR miss falls back to peer (AF-6.3)', () => {
+  const req = fakeReq('11.0.0.5', { 'x-forwarded-for': '203.0.113.7' });
+  // 10.0.0.0/8 does NOT cover 11.0.0.5 — peer is not trusted, XFF ignored.
+  assert.equal(determineSourceIp(req, ['10.0.0.0/8']), '11.0.0.5');
+});
+
+test('determineSourceIp: mixed plain IPs + CIDRs (AF-6.3)', () => {
+  const list = ['127.0.0.1', '10.0.0.0/8', 'fd00::/8'];
+  // Plain hit
+  assert.equal(
+    determineSourceIp(fakeReq('127.0.0.1', { 'x-forwarded-for': '1.2.3.4' }), list),
+    '1.2.3.4',
+  );
+  // CIDR hit (v4)
+  assert.equal(
+    determineSourceIp(fakeReq('10.99.99.99', { 'x-forwarded-for': '1.2.3.4' }), list),
+    '1.2.3.4',
+  );
+  // CIDR hit (v6)
+  assert.equal(
+    determineSourceIp(fakeReq('fd00::1', { 'x-forwarded-for': '1.2.3.4' }), list),
+    '1.2.3.4',
+  );
+  // Miss
+  assert.equal(
+    determineSourceIp(fakeReq('8.8.8.8', { 'x-forwarded-for': '1.2.3.4' }), list),
+    '8.8.8.8',
+  );
+});
+
+test('determineSourceIp: malformed CIDR is skipped, others still work (AF-6.3)', () => {
+  const list = ['nope/garbage', '10.0.0.0/8'];
+  assert.equal(
+    determineSourceIp(fakeReq('10.0.0.5', { 'x-forwarded-for': '1.2.3.4' }), list),
+    '1.2.3.4',
+  );
+});
+
 test('windowStart: rounds down to window boundary', () => {
   assert.equal(windowStart(0, HOUR), 0);
   assert.equal(windowStart(HOUR - 1, HOUR), 0);

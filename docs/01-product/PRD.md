@@ -2327,6 +2327,31 @@ is missing the defense.
 - **AF-5.3:** Sweeper-failure alerting hook (closes AF-2.6). ✓
 - **AF-5.4:** Stored-handle integrity check (closes AF-2.5). ✓
 
+**v0.1.4 — first-adopter feedback (addypin spike):**
+
+Real-world integration findings from the addypin team's spike on
+v0.1.3. Two were genuine bugs (AF-6.4, AF-6.5); the rest are
+ergonomics that surfaced once a real client tried to integrate.
+
+- **AF-6.1:** `auth.revokeSessions(handle)` — log out everywhere
+  without deleting the account. Table-stakes API gap. ✓
+- **AF-6.2:** `devLogMagicLinks` opt-in — print the magic link to
+  stderr when SMTP fails AND the operator has opted in. Real DX
+  win for local development. Sham submissions never logged. ✓
+- **AF-6.3:** CIDR support in `trustedProxies` — accept `10.0.0.0/8`
+  in addition to plain IPs, for k8s/docker/cgnat deployments. ✓
+- **AF-6.4:** **Bug.** `POST /logout` had no Origin/Referer check;
+  cross-origin force-logout was possible. Now mirrors `POST /login`'s
+  Origin validation (AF-4.3). SPEC §10.2 updated. ✓
+- **AF-6.5:** **Footgun.** `confirmationMessage` was interpolated
+  raw into rendered HTML — operator-supplied text, but defense in
+  depth: now HTML-escaped before `{email}` substitution. ✓
+- **AF-6.6:** SPEC §7.3 Step 0 updated with explicit "do NOT add a
+  CSRF token upstream — Origin check is the defense" guidance.
+  Closes a recurring integration-time question. ✓
+- **AF-6.7:** GUIDE front-matter now leads with the v1.0.0
+  walks-away commitment (procurement signal). ✓
+
 ### 17.4 Note on FR-6 timing test (AF-1.8)
 
 The FR-6 test is a *regression detector*, not a *property

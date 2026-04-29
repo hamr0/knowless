@@ -8,6 +8,55 @@ Versioning is [SemVer](https://semver.org/).
 ## [Unreleased]
 
 - Caddy forward-auth Docker integration test (TASKS.md 6.8).
+- `knowless-server --check-null-route`: CLI probe that submits a
+  test message to `shamRecipient` and confirms the local MTA
+  discarded it. Honest answer to "does the operator's null-route
+  actually work?" — the library can know what it submitted but
+  not what the MTA did, so this is the closest we can get.
+  Targeted for v0.2.0.
+
+## [0.1.4] — 2026-04-28
+
+First real-world integration release. Bugs and ergonomics surfaced
+by the addypin team's spike on v0.1.3, plus two minor security
+hardenings that fell out of the audit.
+
+### Added
+
+- **`auth.revokeSessions(handle)`** — log out everywhere without
+  deleting the account. Returns the number of sessions removed.
+  Closes AF-6.1.
+- **`devLogMagicLinks: true`** opt-in — when SMTP fails AND this
+  flag is set, prints the magic link to stderr so a developer can
+  click through. Off by default; never fires for sham (silent-miss)
+  submissions; never replaces real SMTP delivery on success. Closes
+  AF-6.2.
+- **CIDR support in `trustedProxies`** — accept `10.0.0.0/8`,
+  `fd00::/8`, etc. in addition to plain IPs. Uses `node:net`
+  `BlockList`, no new dep. Closes AF-6.3.
+
+### Security
+
+- **CSRF on `POST /logout`.** Origin/Referer validation now mirrors
+  `POST /login` (AF-4.3). Without this, a malicious page could
+  force-logout an authenticated victim. Closes AF-6.4.
+- **`confirmationMessage` is HTML-escaped before rendering.** The
+  message is operator-config (not user input), but a careless
+  operator interpolating user data into it would have produced an
+  XSS. The whole message is now escaped before `{email}` substitution
+  (which was already escaped). Operators who want HTML in the
+  confirmation message must pre-render upstream. Closes AF-6.5.
+
+### Documentation
+
+- **SPEC §10.2** documents the new logout Origin check.
+- **SPEC §7.3 Step 0** adds an explicit "do NOT add a CSRF token
+  upstream — the Origin/Referer whitelist IS the CSRF defense"
+  note for adopters. Closes AF-6.6.
+- **GUIDE.md** front-matter now leads with the v1.0.0 walks-away
+  commitment. Procurement signal: a library that has explicitly
+  committed to *not growing* is a different risk profile from a
+  typical OSS package. Closes AF-6.7.
 
 ## [0.1.3] — 2026-04-28
 

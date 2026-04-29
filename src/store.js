@@ -278,6 +278,11 @@ export function createStore(dbPath = ':memory:') {
       assertHexHash(sidHash, 'sidHash');
       return stmt.deleteSession.run(sidHash).changes > 0;
     },
+    /** Delete every session for `handle`. Returns rows-deleted. AF-6.1. */
+    revokeSessions(handle) {
+      assertHexHash(handle, 'handle');
+      return stmt.deleteHandleSessions.run(handle).changes;
+    },
     sweepSessions(now = Date.now()) {
       return stmt.sweepSessions.run(now).changes;
     },

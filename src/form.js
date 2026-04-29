@@ -56,10 +56,15 @@ export function renderLoginForm(args) {
     next,
   } = args;
 
+  // confirmationMessage is operator-supplied config, not user input — but
+  // operators may naively interpolate user data into it. Escape the whole
+  // message before substituting {email} (which is itself escaped). The
+  // contract is "confirmationMessage is plain text + {email} placeholder";
+  // operators who want HTML can pre-render upstream. Closes AF-6.5.
   const messageBlock =
     confirmationMessage != null
       ? `<div class="msg" role="status">${
-          confirmationMessage.replace(
+          htmlEscape(confirmationMessage).replace(
             /\{email\}/g,
             htmlEscape(echoedEmail ?? ''),
           )

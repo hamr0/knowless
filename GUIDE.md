@@ -5,6 +5,32 @@
 > For the product philosophy, see
 > [`docs/01-product/PRD.md`](docs/01-product/PRD.md).
 
+## Read this first: knowless walks away at v1.0.0
+
+knowless commits to a small, audit-able surface and a *closed* feature
+list. v1.0.0 is the **terminal release** for new functionality: only
+security fixes ship after that. There will be no v2.0 with sessions+,
+no plugin system, no second mailer, no SaaS counterpart.
+
+What this means for you as an adopter:
+
+- **You own integration breadth.** If knowless's defaults don't fit
+  exactly, you patch around it (the API is small enough to do this) or
+  fork it (Apache 2.0). We won't add a config knob to absorb your
+  case.
+- **You can pin and forget.** v1.0.0 will work the same way three
+  years later. Security patches will land in v1.x.
+- **Procurement signal.** A library that has explicitly committed to
+  *not growing* is a different risk profile from a typical OSS
+  package. Most reviews assume "still actively developed" is good;
+  for an auth dependency, "still actively developed" is also "still
+  changing in ways you'll have to track." knowless inverts that.
+
+If you need a kitchen-sink auth library with active feature
+development, this isn't the right tool. See
+[Lucia](https://lucia-auth.com/), [Auth.js](https://authjs.dev/),
+or commercial offerings.
+
 ## Who this is for
 
 Three audiences, in order of fit:

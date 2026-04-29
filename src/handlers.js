@@ -5,6 +5,7 @@ import { newSid, signSession, verifySessionSignature } from './session.js';
 import { composeBody } from './mailer.js';
 import { renderLoginForm } from './form.js';
 import {
+  buildTrustedPeers,
   determineSourceIp,
   rateLimitExceeded,
   rateLimitIncrement,
@@ -178,7 +179,8 @@ export function createHandlers({ store, mailer, config }) {
     }
   }
 
-  const trustedProxies = new Set(cfg.trustedProxies);
+  // Build once at handler creation; supports plain IPs and CIDRs (AF-6.3).
+  const trustedProxies = buildTrustedPeers(cfg.trustedProxies);
 
   // SPEC §5.4 / FR-30: build the cookie-attribute suffix once. Secure is
   // emitted by default and omitted only when cookieSecure: false (localhost
@@ -319,6 +321,14 @@ export function createHandlers({ store, mailer, config }) {
     } catch (err) {
       // Per NFR-10: SMTP failure logged, NEVER leaked to response shape.
       console.error('[knowless] mail submit failed:', err.message);
+      // AF-6.2: dev-mode fallback. When SMTP is unreachable in local
+      // development the operator otherwise has no way to obtain the magic
+      // link. Print it to stderr only when explicitly opted in. Sham
+      // submissions are NOT logged (would leak silent-miss outcome).
+      if (cfg.devLogMagicLinks && !isSham) {
+        const link = `${cfg.baseUrl}${cfg.linkPath}?t=${token.raw}`;
+        process.stderr.write(`[knowless dev] magic link: ${link}\n`);
+      }
     }
 
     rateLimitIncrement(store, 'login_ip', ip, HOUR_MS);
@@ -400,6 +410,15 @@ export function createHandlers({ store, mailer, config }) {
   }
 
   async function logout(req, res) {
+    // CSRF defense — same Origin/Referer check as POST /login (AF-4.3).
+    // Without this, a third-party page can force-logout a victim. Closes
+    // AF-6.4. Browser-absent (curl/programmatic) is allowed.
+    if (!validateOrigin(req, cfg.cookieDomain)) {
+      res.statusCode = 403;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.end('forbidden\n');
+      return;
+    }
     const cookie = getCookie(req, cfg.cookieName);
     if (cookie) {
       const sid = verifySessionSignature(cookie, cfg.secret);
