@@ -1,7 +1,7 @@
 # knowless -- Integration Guide
 
 > For AI assistants and developers wiring knowless into a project.
-> v0.2.0 | Node.js >= 22.5 | 1 dep (nodemailer) | Apache-2.0
+> v0.2.1 | Node.js >= 22.5 | 1 dep (nodemailer) | Apache-2.0
 
 ## What this is
 
@@ -122,6 +122,17 @@ const auth = knowless({
   sweepIntervalMs: 5 * 60 * 1000,     // periodic sweeper tick
   onSweepError: (err) => { /* alerting hook; errors are swallowed */ },
 
+  // --- Operator visibility (v0.2.1, all opt-in) ---
+  // Per-event hooks. Errors swallowed (matches onSweepError contract).
+  onMailerSubmit:     ({messageId, handle, timestamp}) => { /* */ },
+  onTransportFailure: ({error, timestamp})              => { /* */ },
+  // Heartbeat aggregate. Default 60s; emits even when both counters
+  // are zero. See "Operator visibility" section for the threat-model
+  // reasoning behind aggregating sham + rate-limit branches here
+  // rather than emitting per-event.
+  onSuppressionWindow: ({sham, rateLimited, windowMs}) => { /* */ },
+  suppressionWindowMs: 60_000,
+
   // --- Dev mode (AF-6.2) ---
   // When SMTP submission fails AND this flag is true, the magic link
   // is printed to stderr so a developer can click through. Off by
@@ -152,6 +163,7 @@ const auth = knowless({
 | `startLogin` | ({email, nextUrl?, sourceIp?, subjectOverride?, bypassRateLimit?}) | Promise\<{handle, submitted: true}\> | Programmatic magic-link send for "use first, claim later" flows. Same 12-step sham-work as form. `subjectOverride` (AF-9) replaces `cfg.subject` per call. `bypassRateLimit: true` (AF-10) opts trusted server-side callers (CLI, cron, worker) out of IP-rate-limit accounting. SPEC §7.3a. AF-7.3. |
 | `deriveHandle` | (email: string) | string | `HMAC-SHA256(secret, normalize(email))` using the configured secret. Normalizes input (lowercase + trim) so `Alice@X.com` and `alice@x.com` produce the same handle. Match what `startLogin` and `POST /login` compute. AF-7.4 / AF-13. |
 | `_sweep` | -- | void | Trigger one sweep tick on demand (tests, operator scripts). AF-5.3. |
+| `verifyTransport` | -- | Promise\<true\> | Probe the configured SMTP transport (v0.2.1). Resolves true on success, rejects with the underlying error. Adopters call this explicitly when they want fail-fast on misconfigured SMTP at boot — no auto-on-boot variant by design (k8s readiness probes / docker-compose ordering would fail boot for the wrong reason). AF-20. |
 | `config` | -- | object | Merged effective config; safe to read (do not mutate) |
 | `close` | -- | void | Stops sweeper, closes mailer + store. Call on shutdown. |
 
@@ -172,6 +184,91 @@ import {
   secretBytes,      // pure: coerce hex string → 32-byte HMAC key
 } from 'knowless';
 ```
+
+## Operator visibility (v0.2.1)
+
+Three event hooks + one opt-in method, shipped in v0.2.1. Future
+contributors reading this section before extending the surface: do not
+add a per-event `onShamHit`, do not add a per-handle `onRateLimitHit`,
+do not add an auto-on-boot probe, do not add a `lookupMessageId()`
+endpoint. Each was considered and deliberately rejected during the
+forum + addypin negotiation that produced this surface (PRD §17.3,
+v0.2.1) — see "What's NOT in knowless" below for the reasoning.
+
+### Three hooks (factory options)
+
+```js
+const auth = knowless({
+  // ...required + existing options...
+
+  // Per-event, safe to log per-call.
+  onMailerSubmit:     ({messageId, handle, timestamp}) => { /* */ },
+  onTransportFailure: ({error, timestamp})              => { /* */ },
+
+  // Batched aggregate. Fires every windowMs regardless of count
+  // (heartbeat). Default cadence 60s.
+  onSuppressionWindow: ({sham, rateLimited, windowMs}) => { /* */ },
+  suppressionWindowMs: 60_000,
+});
+```
+
+Field types:
+- `messageId`: string — SMTP `Message-ID` returned by nodemailer
+- `handle`: string — 64-char hex; only emitted on real (non-sham) submits
+- `timestamp`: number — epoch ms
+- `error`: Error
+- `sham`, `rateLimited`: integer counters, count within the window
+- `windowMs`: integer — the configured window length, echoed in the payload
+
+Errors thrown from hooks are caught and swallowed (matches the existing
+`onSweepError` contract); knowless does not depend on hook delivery for
+correctness.
+
+### Method
+
+`auth.verifyTransport()` — wraps `transport.verify()` on the configured
+SMTP transport. Returns `Promise<true>` on success, rejects with the
+underlying error. Adopters call this explicitly when they want fail-fast
+on misconfigured SMTP at boot. **No auto-on-boot variant** by design:
+deployments where knowless starts before Postfix (docker-compose
+ordering, k8s readiness probes) would fail boot for the wrong reason.
+
+### Threat-model justification (the durable part)
+
+The two silent-202 branches — sham (handle does not exist) and rate-limit
+(any of the three caps) — are aggregated rather than per-event because
+**NFR-10 timing equivalence applies at the log layer too**, not just the
+HTTP response. A per-event `onShamHit({handle})` lets a careless adopter
+log "sham detected for X" and the log file becomes an enumeration oracle
+— the exact thing sham-work was designed to prevent. The response is
+silent; the log must be silent too.
+
+Knowless has three rate limits, and one of them is identity-tied:
+- `maxLoginRequestsPerIpPerHour` — IP-keyed
+- `maxNewHandlesPerIpPerHour` — IP-keyed
+- `maxActiveTokensPerHandle` — **handle-keyed; per-event hits leak
+  "this handle exists and has hit a token cap"**
+
+Splitting per-event-IP from per-event-handle works in theory and fails
+in practice — future contributor sees the asymmetry and adds the missing
+handle variant for symmetry. Bundling all three into the windowed
+aggregate forecloses that drift.
+
+`onMailerSubmit` carries `handle` per-event because it fires *only on
+real submissions*, where the handle was already disclosed to knowless
+by the form input. Emitting it back to the adopter is not a new leak.
+`onTransportFailure` carries no identity data, per-event safe.
+
+### Why no `lookupMessageId()` endpoint
+
+An earlier proposal added an authenticated `auth.lookupMessageId(id)`
+behind an operator secret so operators could correlate maillog entries
+to handles. Rejected: the same capability is achievable by the adopter
+maintaining their own `(messageId → handle)` map, populated from
+`onMailerSubmit`. Knowless never stores the mapping, never exposes a
+new authenticated surface, never carries operator-secret rotation
+burden. The hook is the mechanism; the correlation map is adopter
+choice.
 
 ## Handle / token / session lifecycles
 
@@ -352,6 +449,66 @@ URL/email -> handlers.js (login: 12-step sham-work flow per SPEC §7.3)
 | `src/session.js` | ~80 | Cookie signing/verification with constant-time compare |
 | `src/form.js` | ~110 | Hardcoded login HTML |
 
+## What's NOT in knowless, and why
+
+Three capabilities that look like they belong here but don't, listed
+because the "why not" needs to outlast walk-away-at-v1.0.0. When future
+contributors propose adding any of these back, point them here.
+
+### Disposable-domain blocking — adopter / form handler
+
+Reject `mailinator.com` etc. before knowless sees the submission.
+Mechanism + list + override + weekly cron all live in the adopter's
+form handler.
+
+The argument for putting this in knowless was timing equivalence: if
+the adopter rejects fast, an attacker times the response and learns
+"this domain is on a public blocklist." Counter: the blocklist is a
+public GitHub repo (`disposable-email-domains/disposable-email-domains`).
+Anyone can fetch it directly. Timing-equivalence here protects information
+that isn't secret. Knowless's sham-work protects against email
+*enumeration* (is `alice@x.com` registered?), not domain *classification*
+(is `x.com` on a public list?). Different threat, different defense.
+
+Splitting mechanism (knowless) from policy + list curation (adopter) is
+the wrong seam. Both stay in the adopter's form handler.
+
+### App-tenure / account-age — adopter / first-seen tracking
+
+Knowless's "handle creation date" is when this email first hit knowless.
+The adopter's interesting question is "how long has this user been
+participating in *my app*" — a different number, and the adopter's
+number is the one that should drive trust decisions.
+
+Concrete failure mode: a handle registered with knowless six months ago
+but never posted has zero app-tenure. If the adopter reads knowless's
+age, a brand-new spammer with an old handle gets unearned credibility.
+
+Pattern: adopter stores `(handle, first_seen_at)` the first time it sees
+a handle perform a meaningful action. App-tenure is app-derived. Knowless
+doesn't expose age data — and wouldn't even if it could, because
+returning `Date | null` keyed by handle is itself an enumeration leak.
+
+### Per-IP hashcash / proof-of-work — Caddy / perimeter layer
+
+`maxNewHandlesPerIpPerHour: 3` already covers the ground hashcash would
+cover. A botnet that can't get past three signups per IP per hour needs
+IP rotation regardless; once rotated, a 2s hashcash is rounding error
+at botnet economics. Costs are real: breaks Lynx/w3m (gotcha #10),
+requires JS in the login form (the only zero-JS exception we'd carry),
+~2s UX delay for legit users on weak devices. If a deployment observes
+per-IP signup actually saturating the cap, Caddy (or another perimeter
+layer) can run hashcash off-the-shelf without making knowless carry it.
+
+### The deciding lens
+
+knowless walks away at v1.0.0 (PRD §6.3). Every config option carried
+into v1.0.0 is something v1.x has to keep stable through the
+maintenance window. The test for any proposed addition: does this
+belong in the **identity layer** (who they are) or the **behavior
+layer** (what they did)? Identity layer is in scope. Behavior layer is
+out. When unsure, default out — less surface, less carrying cost.
+
 ## Threat model summary
 
 **Defends well:** DB-only leaks (handles are HMAC-salted),
@@ -481,6 +638,15 @@ rate-limits) belongs above the library.
     URLs (would conflict with the magic-link line). Validated at
     factory startup; fails fast. Goes after RFC 3676 `"-- "`
     delimiter so mail clients strip it from quoted replies.
+
+19. **`startLogin` is silent at every layer (FR-6).** Returns
+    `{handle, submitted: true}` for *every* branch — real send, sham,
+    rate-limited, missing-handle-with-`openRegistration:false`. Adopters
+    cannot derive the branch from the return value, by design.
+    Operator visibility comes from the v0.2.1 hooks (`onMailerSubmit`
+    per-event, `onSuppressionWindow` aggregated) — *not* from the
+    return shape. Don't wrap `startLogin` in something that surfaces
+    the branch to the caller; that re-opens the enumeration oracle.
 
 ## Constraints
 

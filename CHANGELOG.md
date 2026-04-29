@@ -18,11 +18,97 @@ Versioning is [SemVer](https://semver.org/).
 - **Turnkey Docker image** (`knowless/knowless-server:0.2.x`)
   bundling Postfix + null-route + the binary. Now meaningfully
   smaller and faster to build because v0.2.0 dropped the native
-  compile dep. Targeted for v0.2.1.
+  compile dep.
 - Caddy forward-auth Docker integration test (TASKS.md 6.8).
 - `knowless-server --check-null-route`: CLI probe that submits a
   test message to `shamRecipient` and confirms the local MTA
-  discarded it. Targeted for v0.2.1.
+  discarded it.
+
+## [0.2.1] — 2026-04-29
+
+**Operator visibility, opt-in.** Three event hooks + one method,
+the full surface forum + addypin asked for during the v0.2.0
+integration spike. The shape was negotiated against
+`walk-away-at-v1.0.0` (PRD §6.3): every "obvious" addition was
+deliberately rejected if it could be done in adopter or perimeter
+code. See `knowless.context.md` § "What's NOT in knowless, and why"
+for the rejected-by-design list (disposable-domain check, account-age
+accessor, hashcash, `lookupMessageId()`, `onShamHit`).
+
+### Added
+
+- **`onMailerSubmit({messageId, handle, timestamp})` (AF-19).**
+  Per-event hook fired on successful SMTP submission for *real*
+  (non-sham) sends only. Adopters log it, build msg_id ↔ handle
+  correlation maps, or pipe to structured logging. Knowless never
+  stores the mapping. Sham branches deliberately do NOT fire this
+  hook — that's the load-bearing NFR-10 invariant (would let a
+  careless adopter log per-handle data and reopen the enumeration
+  oracle that sham-work was designed to prevent).
+- **`onTransportFailure({error, timestamp}) (AF-19).** Per-event
+  hook fired on SMTP errors. No identity data — safe per-event,
+  safe to alert on.
+- **`onSuppressionWindow({sham, rateLimited, windowMs})` (AF-19).**
+  Heartbeat hook fired every `suppressionWindowMs` (default 60s)
+  with aggregate counters across all silent-202 branches: sham
+  hits, `login_ip` cap, `create_ip` cap (counted both as sham and
+  rate-limited when fall-through happens), and per-handle token-cap
+  rotation. Heartbeats fire even when both counters are zero — a
+  missing emission is itself diagnostic. Replaces a per-event
+  `onShamHit` / `onRateLimitHit` design that would have leaked
+  per-handle data through log lines; the windowed aggregate
+  preserves the spike signal without per-call distinguishability.
+- **`auth.verifyTransport()` method (AF-20).** Wraps
+  `transport.verify()`. Resolves `Promise<true>` on non-rejection,
+  rejects with the underlying error. Adopters call this explicitly
+  when they want fail-fast on misconfigured SMTP at boot. **No
+  auto-on-boot variant by design (AF-21).** Deployments where
+  knowless starts before Postfix (docker-compose ordering, k8s
+  readiness probes) would fail boot for the wrong reason.
+- **`startLogin` silent-202 documented (AF-22).** New gotcha #19 in
+  `knowless.context.md` and a Mode-A pointer in GUIDE.md make
+  explicit that `startLogin` returns `{handle, submitted: true}`
+  for every branch (real, sham, rate-limited, missing handle) by
+  design. Operators who need branch visibility wire the v0.2.1
+  hooks; the per-call return shape never reveals which branch ran.
+
+### Changed
+
+- **`store.insertToken` returns the eviction count.** Internal
+  store-interface change: `insertToken` now returns the number of
+  tokens evicted to make room for the new one (always `0` when
+  `maxActive` is `0`). Used by `runSendLink` to count per-handle
+  cap rotation events into the `rateLimited` counter. Adopters
+  with custom stores implementing the SPEC §13 interface should
+  update accordingly; the change is forward-compatible (returning
+  `undefined` is treated as zero evictions).
+
+### Documentation (forum + addypin negotiation outcome)
+
+- **knowless.context.md § "What's NOT in knowless, and why"** —
+  permanent record of three rejected-by-design additions
+  (disposable-domain check, account-age accessor, per-IP hashcash)
+  with the seam argument and walk-away-at-v1.0.0 framing. Future
+  contributors evaluating "should X go in knowless?" run two tests
+  before answering yes: identity layer vs behavior layer; mechanism
+  living with policy.
+- **GUIDE.md FAQ** — "Why doesn't knowless block disposable email
+  domains?" + "How do I check how old a user is?" with adopter-side
+  code patterns for both. Closes the most likely "but-can-it" requests.
+
+### Internal
+
+- Hook errors are caught and swallowed via a single `safeHook()`
+  wrapper, matching the existing `onSweepError` contract. Knowless
+  never crashes because an operator's observability sink threw.
+- Suppression-window timer is `unref()`'d and only started when
+  `onSuppressionWindow` is wired — adopters not using the hook
+  spend zero `setInterval` slots on it.
+- 16 new tests in `test/integration/v021-hooks.test.js` covering
+  payload shapes, the sham-no-fire invariant, aggregation
+  semantics, heartbeat behavior, counter reset, hook-error
+  containment, and `verifyTransport()` resolve/reject paths.
+  Test count: 192 → 207.
 
 ## [0.2.0] — 2026-04-28
 

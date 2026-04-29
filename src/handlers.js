@@ -163,7 +163,20 @@ function sidHashOf(sid) {
  *   validateNextUrl: (raw:string)=>string|null
  * }}
  */
-export function createHandlers({ store, mailer, config }) {
+export function createHandlers({ store, mailer, config, events }) {
+  // v0.2.1 operator-visibility hooks. All optional; treat missing as
+  // no-ops so the handler hot path is identical for adopters who don't
+  // wire them. The factory passes a fully-populated `events` object;
+  // direct callers of createHandlers (tests / advanced wiring) may omit
+  // it entirely.
+  const noop = () => {};
+  const ev = {
+    shamHit: events?.shamHit ?? noop,
+    rateLimitHit: events?.rateLimitHit ?? noop,
+    onMailerSubmit: events?.onMailerSubmit ?? noop,
+    onTransportFailure: events?.onTransportFailure ?? noop,
+  };
+
   const cfg = { ...DEFAULTS, ...config };
   if (!cfg.secret) throw new Error('config.secret required');
   if (typeof cfg.secret !== 'string' || cfg.secret.length < 64) {
@@ -267,6 +280,7 @@ export function createHandlers({ store, mailer, config }) {
         HOUR_MS,
       )
     ) {
+      ev.rateLimitHit();
       return { handle: null, isSham: false, emailNorm, nextValidated: null };
     }
 
@@ -287,6 +301,11 @@ export function createHandlers({ store, mailer, config }) {
         )
       ) {
         // Cap exceeded — fall through to sham, do NOT short-circuit.
+        // The fall-through becomes a sham-hit too; both counters
+        // increment because they're independent dimensions (operator
+        // can correlate from `rateLimited` jumping in lockstep with
+        // `sham`).
+        ev.rateLimitHit();
         isCreating = false;
       }
     }
@@ -308,9 +327,10 @@ export function createHandlers({ store, mailer, config }) {
     } else {
       isSham = true;
       toAddress = cfg.shamRecipient;
+      ev.shamHit();
     }
 
-    store.insertToken({
+    const evicted = store.insertToken({
       tokenHash: token.hash,
       handle,
       expiresAt,
@@ -318,6 +338,10 @@ export function createHandlers({ store, mailer, config }) {
       isSham,
       maxActive: cfg.maxActiveTokensPerHandle,
     });
+    // Per-handle token cap rotation is the third rate limit. Counted
+    // here in the aggregate `rateLimited` window so operators see
+    // hammering of a single handle without per-event identity leakage.
+    if (evicted > 0) ev.rateLimitHit();
 
     const mailBody = composeBody({
       tokenRaw: token.raw,
@@ -334,10 +358,29 @@ export function createHandlers({ store, mailer, config }) {
     // so timing equivalence is preserved.
     const effectiveSubject = subject ?? cfg.subject;
     try {
-      await mailer.submit({ to: toAddress, subject: effectiveSubject, body: mailBody });
+      const info = await mailer.submit({
+        to: toAddress,
+        subject: effectiveSubject,
+        body: mailBody,
+      });
+      // v0.2.1: per-event hook on real (non-sham) submissions only.
+      // Sham branches go through the windowed aggregate; emitting them
+      // per-event here would let a careless adopter log per-handle
+      // data and reopen the enumeration oracle that sham-work exists
+      // to prevent.
+      if (!isSham) {
+        ev.onMailerSubmit({
+          messageId: info?.messageId ?? null,
+          handle,
+          timestamp: Date.now(),
+        });
+      }
     } catch (err) {
       // Per NFR-10: SMTP failure logged, NEVER leaked to response shape.
       console.error('[knowless] mail submit failed:', err.message);
+      // v0.2.1: per-event hook for SMTP failures. Carries no identity
+      // data, safe per-event. Operator wires this to alerting.
+      ev.onTransportFailure({ error: err, timestamp: Date.now() });
       // AF-6.2: dev-mode fallback. When SMTP is unreachable in local
       // development the operator otherwise has no way to obtain the magic
       // link. Print it to stderr only when explicitly opted in.

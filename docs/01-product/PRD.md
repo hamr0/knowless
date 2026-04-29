@@ -2480,6 +2480,67 @@ long-LTS distros.
   make, no Python during install. Public API byte-for-byte
   identical; all 192 tests pass on first run after the swap. ✓
 
+**v0.2.1 — operator visibility (forum + addypin negotiation):**
+
+Joint output of the addypin M11 retro and the forum-integration
+spec design pass (2026-04-29). The starting list was nine items;
+five shipped after a multi-round negotiation against the
+walk-away-at-v1.0.0 lens. Four moved to adopter or perimeter code.
+Two design tests were established as durable: identity-layer vs
+behavior-layer (knowless owns *who*, adopter owns *what they did*),
+and mechanism-lives-with-policy (if curation lives in adopter, the
+mechanism does too). Documented in knowless.context.md §
+"What's NOT in knowless, and why" so future contributors see the
+worked reasoning, not just the conclusions.
+
+- **AF-19:** Three event hooks for operator visibility:
+  `onMailerSubmit({messageId, handle, timestamp})` per-event for
+  real (non-sham) submits; `onTransportFailure({error, timestamp})`
+  per-event for SMTP errors; `onSuppressionWindow({sham, rateLimited,
+  windowMs})` heartbeat aggregate (default 60s) covering all
+  silent-202 branches. Sham deliberately does NOT fire per-event —
+  load-bearing NFR-10 invariant against per-handle log leakage.
+  Replaces a four-hook design that would have shipped `onShamHit`
+  + `onRateLimitHit` per-event; the symmetry would have invited a
+  future contributor to add the per-handle variant for the
+  identity-tied `maxActiveTokensPerHandle` cap. ✓
+- **AF-20:** `auth.verifyTransport()` opt-in SMTP probe. Resolves
+  `Promise<true>` on non-rejection, rejects on failure. ✓
+- **AF-21:** No auto-on-boot transport probe. Considered and
+  rejected — k8s readiness probes / docker-compose ordering would
+  fail boot for the wrong reason. Adopters who want fail-fast call
+  `verifyTransport()` explicitly. ✓
+- **AF-22:** `startLogin` silent-202 semantics documented (gotcha
+  #19). Returns `{handle, submitted: true}` for every branch by
+  design (FR-6); operator visibility lives in AF-19's hooks, never
+  in the per-call return shape. ✓
+
+**Rejected during AF-19/20 design (kept here for the record):**
+
+- **Disposable-domain blocking** — adopter form-handler concern.
+  The blocklist is a public GitHub repo; timing-equivalence on
+  rejection protects information that isn't secret. Putting the
+  *mechanism* in knowless while the *list curation* and *override*
+  live in the adopter is the wrong seam.
+- **Account-age accessor / `getHandleAgeBucket()`** — adopter
+  first-seen tracking concern. Knowless's "handle creation date"
+  is when this email first hit knowless; the adopter's interesting
+  question is "how long has this user been participating in *my
+  app*." A six-month-old knowless handle that has never posted
+  has zero application tenure. Returning a `Date | null` keyed by
+  handle would also be an enumeration oracle.
+- **Per-IP hashcash / proof-of-work in the login form** — Caddy /
+  perimeter-layer concern. `maxNewHandlesPerIpPerHour: 3` already
+  covers the threat model; adding hashcash would break Lynx/w3m
+  (gotcha #10), require JS in the login form (the only zero-JS
+  exception we'd carry), and impose a 2s UX delay. Off-the-shelf
+  hashcash modules at the perimeter cover the rare case where the
+  built-in cap saturates.
+- **`auth.lookupMessageId(messageId)` behind operator secret** —
+  achievable by adopter via `onMailerSubmit` payload + their own
+  `(messageId → handle)` map. Knowless never stores the mapping,
+  never carries operator-secret rotation burden.
+
 ### 17.4 Note on FR-6 timing test (AF-1.8)
 
 The FR-6 test is a *regression detector*, not a *property

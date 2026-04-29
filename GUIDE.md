@@ -295,6 +295,11 @@ return identical shapes — the caller can't observe which happened.
 This preserves FR-6 timing equivalence even for programmatic
 callers. See SPEC §7.3a for the full contract.
 
+If you need *operator* visibility (not per-call: aggregate counts and
+real-send confirmation), wire the v0.2.1 hooks documented in
+[Step 8](#step-8-optional-operator-monitoring-via-event-hooks-v021)
+below — they emit without breaking the per-call silent-202 contract.
+
 `auth.deriveHandle(email)` returns the same opaque HMAC handle
 that the form path uses, without you having to import the helper
 or pass the secret around. The instance method **normalizes the
@@ -469,6 +474,76 @@ Library doesn't ship a built-in HTTP endpoint for this — operator
 chooses the UX (admin CLI, in-app self-service, ticket-driven
 support).
 
+### Step 8 (optional): Operator monitoring via event hooks (v0.2.1+)
+
+Three event hooks + one opt-in method. All optional, all opt-in. None
+are required for correct operation; the library is fully functional
+with zero hooks wired. They exist so an operator can wire knowless to
+their existing observability stack (Prometheus, statsd, structured
+logs, on-call paging) without knowless curating its own metrics shape.
+
+```js
+const auth = knowless({
+  // ...required + existing options...
+
+  onMailerSubmit: ({messageId, handle, timestamp}) => {
+    log.info('knowless.dispatch', { messageId, handle, ts: timestamp });
+  },
+  onTransportFailure: ({error, timestamp}) => {
+    log.error('knowless.smtp_failed', { err: error.message, ts: timestamp });
+    pager.notify('SMTP transport failed');
+  },
+  onSuppressionWindow: ({sham, rateLimited, windowMs}) => {
+    metrics.gauge('knowless.sham_count', sham);
+    metrics.gauge('knowless.rate_limited', rateLimited);
+    if (sham > BASELINE * 10) pager.notify('possible enumeration attack');
+  },
+  // suppressionWindowMs: 60_000,  // default; configurable
+});
+
+// Optional: explicit transport probe at boot. No auto-probe by design.
+try {
+  await auth.verifyTransport();
+} catch (err) {
+  console.error('SMTP unreachable at boot:', err);
+  process.exit(1);
+}
+```
+
+#### Why three hooks, not four
+
+The two silent-202 branches — sham hits (handle does not exist) and
+rate-limit hits (any of the three caps) — are bundled into one *windowed
+aggregate* (`onSuppressionWindow`) rather than per-event hooks. Per-event
+hooks would let a careless adopter log per-handle data, which is the
+enumeration oracle that sham-work exists to prevent. The HTTP response
+is silent on these branches; the log file must be silent too.
+
+Operators still get the spike signal — a 10× jump in `sham` count over
+the window is the enumeration-attack alarm. They don't get per-call
+correlation to a specific handle, and they shouldn't have it.
+
+`onMailerSubmit` is per-event because it fires *only* on real
+submissions, where the handle was already disclosed by the form
+input. `onTransportFailure` is per-event because it carries no
+identity data.
+
+> **Don't log `onSuppressionWindow` payloads in a way that distinguishes
+> them from `onMailerSubmit` at the log-line level.** The aggregate
+> count is fine; the line itself should be cleanly labeled as a periodic
+> counter emission, not "a sham just happened." If your log shipper or
+> dashboard groups them differently, you've put back the per-event
+> distinguishability the bundling was meant to remove.
+
+#### Why `verifyTransport()` is opt-in
+
+No auto-on-boot variant exists by design. Deployments where knowless
+starts before Postfix (docker-compose ordering, k8s readiness probes
+that run knowless before the SMTP container is healthy) would fail
+boot for the wrong reason. Adopters who want fail-fast call
+`verifyTransport()` explicitly; everyone else gets eventually-consistent
+SMTP startup.
+
 ## Walkthrough: standalone server mode
 
 Run `npx knowless-server`, point Caddy / nginx / Traefik at it for
@@ -554,6 +629,62 @@ Full options table:
 | `mailer` | no | (built-in nodemailer) | Inject your own mailer. |
 
 ## FAQ
+
+### Why doesn't knowless block disposable email domains?
+
+Disposable-domain blocking (mailinator.com, throwaway.email, etc.) is
+adopter policy, not identity layer. The blocklist is a public GitHub
+repo, the override list is operator-specific, and the cron to refresh
+it lives in your ops layer. Putting the *mechanism* in knowless while
+the *list curation* and *overrides* live in the adopter is the wrong
+seam — both stay together in your form handler.
+
+```js
+// In your /login form handler, before calling auth.login:
+import { DISPOSABLE_DOMAINS, ADOPTER_OVERRIDES } from './disposable-domains.js';
+
+app.post('/login', async (req, res) => {
+  const email = /* parse from body */;
+  const domain = email.split('@')[1]?.toLowerCase();
+  if (domain && DISPOSABLE_DOMAINS.has(domain) && !ADOPTER_OVERRIDES.has(domain)) {
+    // Reply with the same shape as auth.login's success/sham response
+    // to preserve FR-6-equivalent timing at your layer too. Match
+    // status, headers, and body that auth.login would emit.
+    return res.status(200).type('html').send(/* same confirmation HTML */);
+  }
+  return auth.login(req, res);
+});
+```
+
+The same argument applies to per-IP hashcash / proof-of-work: if
+`maxNewHandlesPerIpPerHour: 3` isn't enough for your threat model,
+run hashcash at Caddy or your edge layer — knowless's login form
+deliberately stays zero-JS.
+
+### How do I check how old a handle / user is?
+
+knowless deliberately doesn't expose handle creation dates. The reason:
+"first time this email hit knowless" is rarely the trust signal you
+actually want — you want "first time this user did something meaningful
+in *my app*." A six-month-old knowless handle that has never posted
+has zero application tenure.
+
+Pattern: track `(handle, first_seen_at)` in your own table the first
+time a handle performs the action you care about (first post, first
+purchase, first non-trivial API call). Bucket by your tenure, not
+knowless's.
+
+```js
+// On the action you care about:
+const handle = auth.handleFromRequest(req);
+db.recordFirstSeen(handle, Date.now());  // INSERT OR IGNORE
+const age = db.ageBucketFor(handle);     // 'new' | '1mo' | '1y' | '5y+'
+```
+
+This is also safer: returning a `Date | null` keyed by handle is itself
+an enumeration oracle (null leaks "this handle doesn't exist"). Bucket
+on your side from a table that only knows about handles that have
+already acted.
 
 ### My users say magic links land in spam.
 

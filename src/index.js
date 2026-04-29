@@ -9,7 +9,26 @@ const DEFAULT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 /** Default rate-limit retention: 24 hours past window-start. */
 const DEFAULT_RATE_LIMIT_RETENTION_MS = 24 * 60 * 60 * 1000;
 
+/** Default suppression-window cadence: 60 seconds. v0.2.1. */
+const DEFAULT_SUPPRESSION_WINDOW_MS = 60 * 1000;
+
 const REQUIRED_FIELDS = ['secret', 'baseUrl', 'from'];
+
+/**
+ * Wrap a user-supplied hook so its errors are caught and swallowed.
+ * Matches the `onSweepError` contract: knowless never crashes because
+ * an operator's observability sink threw.
+ */
+function safeHook(fn, label) {
+  if (typeof fn !== 'function') return () => {};
+  return (arg) => {
+    try {
+      fn(arg);
+    } catch (err) {
+      console.error(`[knowless] ${label} hook threw:`, err?.message ?? err);
+    }
+  };
+}
 
 /**
  * @typedef {Object} KnowlessOptions
@@ -37,6 +56,21 @@ const REQUIRED_FIELDS = ['secret', 'baseUrl', 'from'];
  * @property {string[]} [trustedProxies]
  * @property {string} [shamRecipient='null@knowless.invalid']  See SPEC §7.4.
  * @property {number} [sweepIntervalMs]    Sweeper tick; defaults to 5 minutes.
+ * @property {function} [onSweepError]     Optional alerting hook for sweep failures.
+ * @property {function} [onMailerSubmit]   v0.2.1. Per-event hook fired on
+ *   successful mail submission for *real* (non-sham) sends only. Payload:
+ *   `{messageId, handle, timestamp}`. Errors are caught and swallowed.
+ * @property {function} [onTransportFailure]  v0.2.1. Per-event hook fired
+ *   on SMTP errors. Payload: `{error, timestamp}`. Errors swallowed.
+ * @property {function} [onSuppressionWindow] v0.2.1. Heartbeat hook fired
+ *   every `suppressionWindowMs` with aggregate counters. Payload:
+ *   `{sham, rateLimited, windowMs}`. Aggregates the silent-202 branches
+ *   (sham + rate-limit hits) without per-event identity disclosure;
+ *   see knowless.context.md § "v0.2.1 design" for the threat-model
+ *   reasoning. Fires even when both counters are zero (heartbeat).
+ *   Errors swallowed.
+ * @property {number} [suppressionWindowMs=60000]  v0.2.1. Cadence of
+ *   `onSuppressionWindow` emissions. Default 60 seconds.
  * @property {object} [store]              Inject your own store implementation.
  * @property {object} [mailer]             Inject your own mailer.
  * @property {object} [transportOverride]  Pass to nodemailer.createTransport (tests).
@@ -64,7 +98,12 @@ const REQUIRED_FIELDS = ['secret', 'baseUrl', 'from'];
  *   verify: Function,
  *   logout: Function,
  *   loginForm: Function,
+ *   handleFromRequest: (req: any) => string | null,
  *   deleteHandle: (handle: string) => void,
+ *   revokeSessions: (handle: string) => number,
+ *   startLogin: (args: object) => Promise<{handle: string|null, submitted: true}>,
+ *   deriveHandle: (email: string) => string,
+ *   verifyTransport: () => Promise<true>,
  *   config: object,
  *   close: () => void,
  * }}
@@ -102,7 +141,58 @@ export function knowless(options = {}) {
       transportOverride: options.transportOverride,
     });
 
-  const handlers = createHandlers({ store, mailer, config: options });
+  // v0.2.1 operator-visibility hooks. All optional. Validate types up
+  // front so a typo is caught at startup, not on the first hit.
+  for (const k of ['onMailerSubmit', 'onTransportFailure', 'onSuppressionWindow']) {
+    if (options[k] !== undefined && typeof options[k] !== 'function') {
+      throw new Error(`knowless: ${k} must be a function when provided`);
+    }
+  }
+  const suppressionWindowMs =
+    options.suppressionWindowMs ?? DEFAULT_SUPPRESSION_WINDOW_MS;
+  if (
+    typeof suppressionWindowMs !== 'number' ||
+    !Number.isFinite(suppressionWindowMs) ||
+    suppressionWindowMs <= 0
+  ) {
+    throw new Error('knowless: suppressionWindowMs must be a positive number');
+  }
+
+  // Counters reset every windowMs. Aggregating sham + rate-limit
+  // branches behind a windowed counter (rather than per-event hooks)
+  // is the deliberate design — see knowless.context.md § "Why three
+  // hooks, not four" for the threat-model justification.
+  let shamCount = 0;
+  let rateLimitedCount = 0;
+  const onMailerSubmit = safeHook(options.onMailerSubmit, 'onMailerSubmit');
+  const onTransportFailure = safeHook(options.onTransportFailure, 'onTransportFailure');
+  const onSuppressionWindow = safeHook(options.onSuppressionWindow, 'onSuppressionWindow');
+
+  const events = {
+    shamHit: () => { shamCount++; },
+    rateLimitHit: () => { rateLimitedCount++; },
+    onMailerSubmit,
+    onTransportFailure,
+  };
+
+  const handlers = createHandlers({ store, mailer, config: options, events });
+
+  // The window timer fires every windowMs as a heartbeat — emits even
+  // when both counters are zero. Operators rely on the heartbeat as a
+  // liveness signal ("knowless is processing"); a missing emission is
+  // itself diagnostic. Only run the timer when the hook is wired so we
+  // don't spend a setInterval slot on adopters who don't use it.
+  let suppressionTimer = null;
+  if (typeof options.onSuppressionWindow === 'function') {
+    suppressionTimer = setInterval(() => {
+      const sham = shamCount;
+      const rateLimited = rateLimitedCount;
+      shamCount = 0;
+      rateLimitedCount = 0;
+      onSuppressionWindow({ sham, rateLimited, windowMs: suppressionWindowMs });
+    }, suppressionWindowMs);
+    if (typeof suppressionTimer.unref === 'function') suppressionTimer.unref();
+  }
 
   const sweepIntervalMs = options.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS;
   const onSweepError = options.onSweepError;
@@ -163,8 +253,15 @@ export function knowless(options = {}) {
     config: handlers._config,
     /** Run a sweep tick on demand. Useful for tests and operator scripts. */
     _sweep: runSweep,
+    /** Probe the configured SMTP transport (v0.2.1). Resolves true on
+     *  success, rejects with the underlying error. Opt-in fail-fast for
+     *  adopters who want to validate SMTP at boot; no auto-on-boot
+     *  variant by design — k8s readiness probes / docker-compose
+     *  ordering would fail boot for the wrong reason. */
+    verifyTransport: () => mailer.verify(),
     close() {
       clearInterval(sweepTimer);
+      if (suppressionTimer !== null) clearInterval(suppressionTimer);
       try {
         mailer.close?.();
       } catch {

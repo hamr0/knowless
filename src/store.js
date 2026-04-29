@@ -194,17 +194,23 @@ export function createStore(dbPath = ':memory:') {
   };
 
   // Transactional cap-check + insert per SPEC §4.7.
+  // Returns the number of tokens evicted to make room for the new one
+  // (always 0 when maxActive is 0). Callers use this to count
+  // per-handle-cap rotation events for operator monitoring (v0.2.1).
   const insertTokenAtomic = makeTransaction(db,
     (tokenHash, handle, expiresAt, nextUrl, isSham, maxActive, now) => {
+      let evicted = 0;
       if (maxActive > 0) {
         const { n: count } = stmt.countActiveTokens.get(handle, now);
         let toEvict = count - maxActive + 1;
         while (toEvict > 0) {
           stmt.evictOldestActive.run(handle, now);
           toEvict--;
+          evicted++;
         }
       }
       stmt.insertToken.run(tokenHash, handle, expiresAt, nextUrl, isSham);
+      return evicted;
     },
   );
 
@@ -231,6 +237,13 @@ export function createStore(dbPath = ':memory:') {
     },
 
     // --- Token ---
+    /**
+     * Insert a token, evicting oldest active tokens for the handle when
+     * the per-handle cap (maxActive) would be exceeded.
+     * @returns {number} count of tokens evicted to make room (0 when no
+     *   rotation occurred). Used for operator monitoring (v0.2.1
+     *   `onSuppressionWindow.rateLimited` counter).
+     */
     insertToken(args) {
       const {
         tokenHash,
@@ -243,7 +256,7 @@ export function createStore(dbPath = ':memory:') {
       } = args;
       assertHexHash(tokenHash, 'tokenHash');
       assertHexHash(handle, 'handle');
-      insertTokenAtomic(
+      return insertTokenAtomic(
         tokenHash,
         handle,
         expiresAt,

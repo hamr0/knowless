@@ -221,6 +221,27 @@ export function createMailer(cfg) {
         raw,
       });
     },
+    /**
+     * Probe the underlying SMTP transport. Resolves to true on success,
+     * rejects with the underlying error otherwise. Adopters call this
+     * explicitly when they want fail-fast on misconfigured SMTP at boot.
+     * No auto-on-boot variant: deployments where knowless starts before
+     * Postfix (docker-compose ordering, k8s readiness probes) would
+     * fail boot for the wrong reason. v0.2.1.
+     *
+     * Contract: non-rejection means success. The underlying nodemailer
+     * transport may return a truthy value, falsy value, or throw —
+     * non-throwing is treated as success and normalized to `true`.
+     * Tests using `streamTransport` exercise this normalization
+     * (streamTransport's verify() returns false even on healthy probes).
+     */
+    async verify() {
+      if (typeof transport.verify !== 'function') {
+        return true;
+      }
+      await transport.verify();
+      return true;
+    },
     close() {
       if (typeof transport.close === 'function') transport.close();
     },
