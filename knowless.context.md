@@ -619,12 +619,12 @@ rate-limits) belongs above the library.
     `console.warn` if it sees `Content-Length > 0` with an empty
     body. AF-7.1.
 
-16. **Two adoption modes — Mode B (register-first) and Mode A
-    (use-first claim-later).** Mode B is the form (`auth.login`).
-    Mode A is `auth.startLogin({email, nextUrl, sourceIp})` for
-    "drop a pin, claim by email click" patterns. Both run the
-    identical 12-step sham-work flow; same FR-6 guarantee. Pick
-    per-action, not per-app.
+16. **Two adoption modes — "sign in, then do" (Mode B) and "do
+    then confirm by email" (Mode A).** Mode B is the form
+    (`auth.login`). Mode A is `auth.startLogin({email, nextUrl,
+    sourceIp})` for "drop a pin, claim by email click" patterns.
+    Both run the identical 12-step sham-work flow; same FR-6
+    guarantee. Pick per-action, not per-app.
 
 17. **Secret is hex-decoded (AF-8.1, since v0.1.6).** Pass a
     64-char lowercase hex string; knowless decodes to 32 raw bytes

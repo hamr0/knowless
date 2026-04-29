@@ -9,196 +9,144 @@ npm install knowless
 
 > v0.2.1 | Node.js >= 22.5 | **1 production dep (nodemailer)** | Apache-2.0
 
-## Why this exists
+## Where to go next
 
-Most auth libraries (Auth0, Clerk, Magic, Firebase Auth) default to
-maximum identity collection: full email stored in plaintext, profile
-fields, recovery email, federation. Even nominally privacy-focused
-options store enough that a breach is materially harmful.
+Two docs live alongside this README. They serve different readers; pick
+the one that matches yours.
 
-knowless is the simpler answer that always worked: **magic link in,
-session cookie out, nothing else stored.** Email is HMAC-hashed at the
+| You are | Read this | What's there |
+|---|---|---|
+| **A human integrating for the first time** | [`GUIDE.md`](GUIDE.md) | Step-by-step walkthrough — install, generate the secret, set up Postfix, mount handlers, both modes worked end-to-end. Configuration reference, FAQ, troubleshooting. |
+| **An AI agent, or reading in a hurry** | [`knowless.context.md`](knowless.context.md) | Dense single-file reference. Public API table, every option with defaults, 19 gotchas, lifecycle diagrams, the sham-work pattern, threat model, "what's NOT in knowless and why." Designed to fit one context window. |
+| **Deploying to a real server** | [`OPS.md`](OPS.md) | Postfix install, SPF/DKIM/PTR/DMARC, null-route, systemd, Caddy/nginx/Traefik forward-auth, MailHog dev, fail2ban, multi-process. |
+| **Tracking what changed** | [`CHANGELOG.md`](CHANGELOG.md) | Version history. |
+
+## What it does
+
+The simpler answer that always worked: **magic link in, session
+cookie out, nothing else stored.** Email is HMAC-hashed at the
 boundary and discarded. The library refuses, by API shape, to send
 anything but the sign-in link or store anything identifying.
+
+Most auth libraries default to maximum identity collection: full email
+in plaintext, profile fields, recovery email, federation. Even
+nominally privacy-focused options store enough that a breach is
+materially harmful. knowless inverts the default.
 
 The thesis: most services have ten layers of auth tooling where they
 need two.
 
-## Two modes — pick per action
+## How it works
 
-Same library, two flows. They coexist in one app; choose per-endpoint
-based on whether forcing a login *before* the action would harm UX.
+```
+email  →  HMAC-SHA256(secret, normalize(email))  →  opaque handle
+            |                                         |
+            v                                         v
+       magic-link token (256-bit, single-use)    sessions, tokens
+            |                                         |
+            v                                         v
+       submitted via localhost SMTP             stored as SHA-256 hashes
+            |
+            v
+       user clicks  →  handle resolved  →  signed cookie set
+```
 
-### Mode B — register-first (the form)
+- **Plaintext email is never persisted.** Only the salted hash
+  (`HMAC-SHA256(secret, normalized_email)`).
+- **Only the magic link is ever sent.** No welcome, no digest, no
+  notification. There is no API to send anything else.
+- **All outbound mail goes via your localhost MTA.** No vendor SDKs,
+  no API tokens.
+- **Tokens are SHA-256 at rest, single-use, 15-min TTL.** Raw token
+  never persisted.
+- **Session cookies are HMAC-signed.** No JWT, no algorithm confusion.
+- **Sham work on every miss.** Unknown emails do the same work as
+  registered ones (compose, submit, log) but the SMTP recipient is a
+  null-route. Times equivalent within 1ms — measured in CI.
 
-User must log in before performing the action. Standard "sign in to
-continue" flow.
+## Two modes
 
-- User hits `/login`, types email
-- Magic link arrives, click → session cookie
-- Your protected endpoints call `auth.handleFromRequest(req)` to gate
-  access
+Same library, two flows. They coexist in one app — pick per action.
 
-Use for: account settings, paid features, anything that requires an
-identified user at the moment of the action.
+- **"Sign in, then do the thing"** — a normal login.
+- **"Do the thing, confirm by email"** — drop a pin, post a comment,
+  share a link without an account, and the email confirmation creates
+  the account in the background.
 
-### Mode A — use-first, claim-later (programmatic)
+The same sham-work flow runs underneath either mode, so unknown
+emails, rate-limit hits, and real sends look identical to an external
+observer.
 
-User performs the action *without* being logged in. You capture their
-email along with the action, fire a magic link via
-`auth.startLogin({email, nextUrl, ...})`, and clicking it opens a
-session and "promotes" the deferred resource.
+Worked code for both in [`GUIDE.md`](GUIDE.md).
 
-Use for: drop-a-pin / submit-a-paste / share-a-link / disposable
-resources / anywhere logging in first kills the UX.
+## Two deployment shapes
 
-The same 12-step sham-work flow runs underneath either mode, so
-unknown emails, rate-limit hits, and real sends look identical to an
-external observer (the FR-6 timing-equivalence guarantee). Pick per
-action; the two coexist.
-
-Worked code for both modes is in [`GUIDE.md`](GUIDE.md). The dense
-API reference is [`knowless.context.md`](knowless.context.md).
+| Shape | When |
+|---|---|
+| **Library mode** | Mount the five handlers (`login`, `callback`, `verify`, `logout`, `loginForm`) in your existing Node app. |
+| **Standalone server** (`npx knowless-server`) | Forward-auth gateway behind Caddy / nginx / Traefik for self-hosters gating Uptime Kuma / AdGuard / Pi-hole / Sonarr / Jellyfin / etc. One auth subdomain, SSO across services via the parent-domain cookie. |
 
 ## What's opinionated (locked by design)
 
-These are deliberate trade-offs, documented as `NO-GO` in
-[`docs/01-product/PRD.md`](docs/01-product/PRD.md) §14.
-The library refuses, by API shape, to grow into them.
+Deliberate trade-offs. The library refuses, by API shape, to grow
+into them.
 
-- **Localhost SMTP only.** No Mailgun/Postmark/SES/Resend. The
-  operator runs Postfix (or another MTA) on the same host, in
-  outbound-only mode.
-- **One mail purpose: the sign-in link.** No welcome message, no
-  digest, no notification. There is no `sendNotification()` to be
-  tempted by.
+- **Localhost SMTP only.** No Mailgun / Postmark / SES / Resend.
+- **One mail purpose: the sign-in link.** No `sendNotification()` to
+  be tempted by.
 - **Plain-text 7-bit email.** No HTML, no tracking pixels, no
   click-rewriting, no read-receipts.
 - **No OAuth / OIDC / SAML.** Different audience.
 - **No 2FA / WebAuthn / TOTP / passkeys.** Compose with a separate
   library if you need them.
 - **No admin UI.** `sqlite3 knowless.db` is the admin UI.
-- **Hardcoded login form.** No template overrides; fork or live
-  with it.
-- **No telemetry, analytics, or error reporting.** Self-hostable end
-  to end. No phone-home of any kind.
+- **Hardcoded login form.** No template overrides; fork or live with
+  it.
+- **No telemetry, analytics, or error reporting.** No phone-home of
+  any kind.
 - **Walks away at v1.0.0.** Maintenance mode after that — only
   security fixes.
 
-## What's swappable
-
-Everything that *isn't* identity-shape or threat-model essential is
-config or injection.
-
-| Knob | Default | Common reasons to change |
-|---|---|---|
-| `dbPath` | `./knowless.db` | Move to `/var/lib/knowless/...` for systemd; share across processes |
-| `smtpHost`, `smtpPort` | `localhost`, `25` | Point at MailHog (`localhost:1025`) for dev mail inspection |
-| `cookieDomain` | hostname of `baseUrl` | Set to your eTLD+1 for SSO across subdomains |
-| `cookieSecure` | `true` | `false` only for `http://localhost` dev (logs a warning) |
-| `tokenTtlSeconds`, `sessionTtlSeconds` | `900`, `2592000` | Tighten for high-security uses; loosen at your peril |
-| `openRegistration` | `false` | `true` to let any new email auto-register on first link |
-| `subject` | `Sign in` | Match your brand; per-call override on `startLogin` (`subjectOverride`) |
-| `bodyFooter` | none | Append a constant brand/legal/feedback line to every magic-link mail |
-| `confirmationMessage` | (default copy) | Replace the post-submit "we'll email you" text |
-| `maxLoginRequestsPerIpPerHour`, `maxNewHandlesPerIpPerHour` | `30`, `3` | Raise for genuinely shared NATs; `0` to disable in dev |
-| `trustedProxies` | `[127.0.0.1, ::1]` | Plain IPs **and** CIDRs (`10.0.0.0/8`) for k8s/docker/cgnat |
-| `bypassRateLimit` (per-call) | `false` | Trusted CLI/cron callers via `auth.startLogin` |
-| `store` | built-in `node:sqlite` | Inject your own store (Postgres, etc.) |
-| `mailer` | built-in nodemailer | Inject your own mailer |
-| `transportOverride` | none | Pass a custom `nodemailer.createTransport` |
-| `onSweepError(err)` | none | Operator alerting hook for sweeper failures |
-| `devLogMagicLinks` | `false` | `true` in dev: print magic-link URLs (or silent-miss hints) to stderr when SMTP fails |
-
-Full table with defaults, types, and validation rules:
-[`GUIDE.md`](GUIDE.md) → "Configuration reference."
-
-## Two deployment shapes (one codebase)
-
-| Mode | Status | When |
-|---|---|---|
-| **Library mode** | shipped (v0.1.0) | Mount handlers in your existing Node app |
-| **Standalone server** (forward-auth) | shipped (v0.1.3) | Self-hosters gating Uptime Kuma / AdGuard / Pi-hole / Sonarr / etc. behind Caddy / nginx / Traefik |
-
-Library mode is the six-line example in [`GUIDE.md`](GUIDE.md).
-Standalone server is `npx knowless-server` — full Postfix + DNS +
-reverse-proxy walkthrough in [`OPS.md`](OPS.md).
-
-## First customer: addypin
-
-[`addypin`](https://github.com/hamr0/addypin) — location-sharing
-service in the same hermit-architecture lineage — adopted knowless
-as its auth+mail layer. The integration delta:
-
-- **~1,150 lines of bespoke auth/mail code removed** (custom mailer,
-  inbound CLI, login plumbing, pin-confirmation state machine, email
-  fingerprinting helpers, the matching test files)
-- **~35 lines of knowless wiring added**
-- **~33× reduction** on the auth/mail surface
-- **One production dep** (`nodemailer` only; v0.2.0 dropped
-  `better-sqlite3` for `node:sqlite`, the stdlib SQLite driver — no
-  C++ toolchain, no native compile, ~40 transitive packages → 2)
-
-The integration round produced the audit findings AF-7 through AF-17
-that drove v0.1.5 → v0.1.10. See [`docs/01-product/PRD.md`](docs/01-product/PRD.md)
-§17 for the full backlog.
+If any of those break your case, knowless isn't the right tool. Look
+at [Lucia](https://lucia-auth.com/), [Auth.js](https://authjs.dev/),
+or commercial offerings.
 
 ## Operator commitments
 
-By choosing knowless, you commit to:
+By choosing knowless, you commit to running:
 
-- Running your own server with **Postfix** (or another MTA) installed
-  for outbound-only mail
-- Setting up **SPF, DKIM, and PTR** for your sending domain
-- Verifying **outbound port 25** is open (some clouds block it)
-- A **null-route entry** for the configured `shamRecipient` so
-  silent-miss sham mail is dropped, not bounced
-- Accepting that the magic link is the **only email** your service
-  ever sends
+- **Postfix** (or another MTA) on the same host, outbound-only
+- **SPF, DKIM, PTR** records for your sending domain
+- **Outbound port 25** open (some clouds block it)
+- A **null-route** for the configured `shamRecipient` so silent-miss
+  sham mail drops, not bounces
 
-Step-by-step in [`OPS.md`](OPS.md): Postfix install, null-route,
-SPF/DKIM/PTR/DMARC, systemd unit, Caddy / nginx / Traefik
-forward-auth examples, Tailscale pattern, reverse-proxy rate
-limiting, fail2ban / Turnstile, multi-process deployments, MailHog
-dev workflow, backups.
+Step-by-step in [`OPS.md`](OPS.md).
 
-## Documentation
+## Threat model — one paragraph
 
-- [**`GUIDE.md`**](GUIDE.md) — start here. Adopter walkthrough,
-  install, six-line example, both modes worked end-to-end,
-  configuration reference, FAQ, troubleshooting.
-- [**`knowless.context.md`**](knowless.context.md) — dense reference
-  for AI agents and humans-in-a-hurry. Public API table, all options,
-  18 gotchas, lifecycles, the sham-work pattern, threat model
-  summary.
-- [`OPS.md`](OPS.md) — operator setup, fresh VPS to working forward-auth.
-- [`CHANGELOG.md`](CHANGELOG.md) — version history.
-- [`docs/01-product/PRD.md`](docs/01-product/PRD.md) — product
-  requirements, threat model, decisions log, NO-GO table, audit
-  findings backlog.
-- [`docs/02-design/SPEC.md`](docs/02-design/SPEC.md) — wire formats,
-  algorithms, byte layouts (reimplementation-grade).
+**Defends well:** DB-only leaks (handles are HMAC-salted),
+plaintext-email exfiltration (none persisted), password reuse (no
+passwords), silent email enumeration via the login form (timing-
+equivalent + same response shape), email-bombing a target (per-handle
+token cap), naive bots (honeypot), account-creation spam (per-IP
+caps), replay attacks (atomic mark-token-used), open redirects
+(`next_url` whitelist), CSRF on POST endpoints (Origin/Referer
+whitelist).
 
-## Threat model (one-paragraph)
-
-Honest version (full detail in [PRD §12](docs/01-product/PRD.md)):
-
-**Defends well:** DB-only leaks, plaintext-email exfiltration, password
-reuse / credential stuffing, silent email enumeration (timing-
-equivalent within 1ms locally), email-bombing a target, naive bot
-traffic, account-creation spam, replay attacks, open redirects, CSRF
-on `POST /login` / `POST /logout` (Origin/Referer whitelist).
-
-**Defends partially:** HMAC-secret-only leak (allows targeted
-existence checks but not session forgery), phishing (no password to
-type into a fake site, but a phished mailbox still receives links).
+**Partially:** HMAC-secret-only leak (allows targeted existence
+checks but not session forgery), phishing (no password to type into a
+fake site, but a phished mailbox still receives links).
 
 **Does NOT defend against:** sophisticated bots that bypass the
 honeypot, distributed floods from many IPs, full server compromise,
-compromised email accounts, social engineering, insider threat at
-the operator. Layer-2 defences (Cloudflare, fail2ban, reverse-proxy
-rate-limits) belong above the library; [`OPS.md`](OPS.md) §9–§10
-covers the patterns.
+compromised email accounts, social engineering, insider threat at the
+operator. Layer-2 defences (Cloudflare, fail2ban, reverse-proxy
+rate-limits) belong above the library — patterns in
+[`OPS.md`](OPS.md).
+
+Full detail in [`knowless.context.md`](knowless.context.md) §
+"Threat model summary."
 
 ## Sibling projects
 
@@ -206,14 +154,6 @@ covers the patterns.
   first knowless adopter
 - [`gitdone`](https://github.com/hamr0/gitdone) — verified email
   actions via DKIM/SPF inbound
-
-## Contributing
-
-Issues and PRs welcome at <https://github.com/hamr0/knowless>.
-
-Per the v1.0.0 walk-away framing in PRD §6.3: feature requests after
-v1.0.0 ships will be deflected to the [§14 NO-GO table](docs/01-product/PRD.md)
-or to sibling projects. The library being "done" is a feature.
 
 ## License
 

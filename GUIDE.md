@@ -240,15 +240,18 @@ the form.
 
 ### Two adoption modes (Mode A vs Mode B)
 
-knowless supports two UX flows out of the box. Pick per-action,
-not per-app — both can coexist.
+In plain English: **"sign in, then do the thing"** (Mode B) and
+**"do the thing, confirm by email"** (Mode A). knowless supports
+both out of the box; pick per-action, not per-app — they coexist.
+The Mode A/B labels are used here and in the CHANGELOG so
+discussions across the docs stay unambiguous.
 
-**Mode B — register-first (the default).** User must log in before
-performing the action. Wire `auth.login` / `auth.callback` as
-above; gate your action with `auth.handleFromRequest(req)`. Use
-when the action requires a session (account settings, paid
-features, anything you want tied to an identity at the moment of
-the action).
+**Mode B — "sign in, then do the thing" (register-first, the default).**
+User must log in before performing the action. Wire `auth.login` /
+`auth.callback` as above; gate your action with
+`auth.handleFromRequest(req)`. Use when the action requires a session
+(account settings, paid features, anything you want tied to an
+identity at the moment of the action).
 
 ```js
 app.post('/api/comments', (req, res) => {
@@ -258,12 +261,12 @@ app.post('/api/comments', (req, res) => {
 });
 ```
 
-**Mode A — use-first, claim-later.** User performs the action
-without logging in; you capture their email and trigger a magic
-link. Clicking it opens a session and your callback handler
-"promotes" the deferred resource. Use for "drop a pin," "post a
-share link," "submit a paste" — patterns where forcing a login
-*before* the action would harm the UX.
+**Mode A — "do the thing, confirm by email" (use-first, claim-later).**
+User performs the action without logging in; you capture their email
+and trigger a magic link. Clicking it opens a session and your
+callback handler "promotes" the deferred resource. Use for "drop a
+pin," "post a share link," "submit a paste" — patterns where forcing
+a login *before* the action would harm the UX.
 
 ```js
 app.post('/api/pins', async (req, res) => {
