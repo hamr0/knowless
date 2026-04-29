@@ -2319,6 +2319,8 @@ is missing the defense.
 | AF-2.24 | `auth.deriveHandle(email)` did not normalize | The instance method passed raw email to HMAC while `auth.startLogin` and `POST /login` normalize first. Adopters using `deriveHandle` to compute owner-keyed lookups got silent handle mismatches whenever email casing varied between create-time and click-time. Hard-to-debug "user's records disappear" failure mode. Surfaced by addypin manual smoke. |
 | AF-2.25 | `failureRedirect` default cascades to a route Mode-A adopters don't serve | Default `failureRedirect = loginPath = /login`. Mode-A adopters who don't mount `loginForm` get expired/replayed magic-link clicks 302'd to a 404. Adopter-side fix is one-line config but the discovery cost is high. Surfaced by addypin manual smoke. |
 | AF-2.26 | No documented dev-time mail inspection workflow | `devLogMagicLinks` covers the URL but not subject/body/footer rendering. New adopters wiring `bodyFooter` or `subjectOverride` re-derive the same MailHog-on-1025 trick. Surfaced by addypin manual smoke. |
+| AF-2.27 | Default per-IP rate-limit caps cripple local dev | `maxLoginRequestsPerIpPerHour: 30` and `maxNewHandlesPerIpPerHour: 3` are tuned for prod but trip in minutes during local dev from `127.0.0.1`. The counters persist in SQLite across restarts, so the operator can't even reboot out of it. No GUIDE mention of the dev workaround. Surfaced by addypin manual smoke. |
+| AF-2.28 | Silent-miss debug line undocumented as a feature | The `[knowless dev:<from>] silent-miss: ...` stderr hint introduced in AF-7.2 is excellent at surfacing the closed-reg-no-handle case but is buried in the changelog. Adopters hit closed-reg friction once and benefit forever; promoting it in the GUIDE turns 30-min debug sessions into 30-second ones. |
 
 ### 17.3 Priority-ranked hardening backlog
 
@@ -2421,6 +2423,19 @@ Breaking change re: secret semantics, locked in before v1.0.
   breaking Mode-B users with custom paths. ✓
 - **AF-15:** OPS.md §11b covers MailHog dev workflow for
   inspecting subject/body/footer (closes AF-2.26). ✓
+
+**v0.1.10 — addypin manual smoke continued:**
+
+Both pure docs.
+
+- **AF-16:** GUIDE adds a "Local development setup" section with
+  copy-pasteable dev config and explanation of why each flag
+  matters (closes AF-2.27). Considered auto-coupling rate-limit-
+  off to `devLogMagicLinks` but rejected — production-debug
+  scenarios shouldn't silently drop other defenses. ✓
+- **AF-17:** Silent-miss debug line promoted in the dev section
+  as the "30-second-instead-of-30-minute closed-reg debugger"
+  (closes AF-2.28). ✓
 
 ### 17.4 Note on FR-6 timing test (AF-1.8)
 

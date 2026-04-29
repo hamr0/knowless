@@ -398,6 +398,59 @@ reverse proxy gates upstreams via `/verify` returning 200/401 +
 `handleFromRequest` — same answer, no sub-request round-trip, no
 header parsing.
 
+### Local development setup
+
+Production defaults are tuned to bite bots, not to be friendly to a
+developer hammering the same address from `127.0.0.1` for the
+hundredth time. Use a dedicated dev config:
+
+```js
+const auth = knowless({
+  // ...required fields
+  cookieSecure: false,             // localhost-only HTTP origins (AF-4.4)
+  devLogMagicLinks: true,          // print magic links to stderr when SMTP fails (AF-6.2)
+  maxLoginRequestsPerIpPerHour: 0, // disable per-IP login cap
+  maxNewHandlesPerIpPerHour: 0,    // disable per-IP create cap
+  openRegistration: true,          // skip the pre-seeding step in dev
+});
+```
+
+Why each flag matters in dev:
+
+- **`cookieSecure: false`** — without it, `http://localhost` browsers
+  reject the session cookie silently. The library logs a stderr
+  warning at startup so you can't accidentally ship this to prod.
+- **`devLogMagicLinks: true`** — when SMTP is unreachable (no local
+  Postfix yet), magic-link URLs print to stderr tagged
+  `[knowless dev:<from>] magic link: ...`. Click straight from the
+  terminal. **Bonus diagnostic** (AF-7.2): on a sham/silent-miss
+  path, you get `[knowless dev:<from>] silent-miss: handle for
+  "X" does not exist (openRegistration=false)` instead — surfaces
+  the closed-reg gotcha that costs everyone the same 30 minutes
+  the first time.
+- **`maxLoginRequestsPerIpPerHour: 0` and `maxNewHandlesPerIpPerHour:
+  0`** — disable per-IP rate caps. The defaults (30 / 3 per hour)
+  are sane for prod but shoot you in the foot during repeated test
+  runs. The counters **persist in the SQLite file** across process
+  restarts, so even rebooting the dev server doesn't clear them —
+  you'd have to delete the DB or wait an hour. Setting both to 0
+  in dev avoids the surprise.
+- **`openRegistration: true`** — saves you from manually pre-seeding
+  every test email via `auth.deriveHandle` + your own store insert.
+
+> **Don't ship this config.** Each of these flags weakens a specific
+> defense. They are coupled to your environment, not to each other —
+> intentionally. (We considered auto-disabling rate limits whenever
+> `devLogMagicLinks` is true, but rejected: an operator turning on
+> `devLogMagicLinks` to debug a single email in production should
+> NOT have rate limits silently dropped at the same time.)
+
+For end-to-end mail rendering checks (verify the `bodyFooter`,
+inspect the magic-link line for QP soft-breaks, confirm the
+right `subjectOverride` shipped), point dev knowless at MailHog
+on `localhost:1025`. Setup walkthrough lives in
+[`OPS.md` §11b](OPS.md).
+
 ### Step 7: GDPR right-to-erasure
 
 The store interface exposes `deleteHandle(handle)` — atomic delete

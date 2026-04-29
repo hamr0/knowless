@@ -1,7 +1,7 @@
 # knowless -- Integration Guide
 
 > For AI assistants and developers wiring knowless into a project.
-> v0.1.9 | Node.js >= 20 | 2 deps (nodemailer, better-sqlite3) | Apache-2.0
+> v0.1.10 | Node.js >= 20 | 2 deps (nodemailer, better-sqlite3) | Apache-2.0
 
 ## What this is
 

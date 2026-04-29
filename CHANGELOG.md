@@ -17,6 +17,32 @@ Versioning is [SemVer](https://semver.org/).
   test message to `shamRecipient` and confirms the local MTA
   discarded it. Targeted for v0.2.0.
 
+## [0.1.10] — 2026-04-28
+
+addypin manual smoke continued. Two DX docs improvements; no code
+changes.
+
+### Documentation
+
+- **GUIDE: "Local development setup" section (AF-16).** Covers the
+  five flags that turn knowless from "production-tuned, defensive"
+  to "developer-friendly, get-out-of-my-way" — `cookieSecure: false`,
+  `devLogMagicLinks: true`, `maxLoginRequestsPerIpPerHour: 0`,
+  `maxNewHandlesPerIpPerHour: 0`, `openRegistration: true`. Each
+  flag explained with what it solves and a sharp warning about
+  shipping it. Considered auto-disabling rate limits whenever
+  `devLogMagicLinks: true` to save typing, but rejected the
+  coupling — operators turning on `devLogMagicLinks` briefly to
+  debug a single email in prod should NOT have rate limits silently
+  dropped at the same time.
+- **GUIDE: silent-miss debug line is now promoted as a feature
+  (AF-17).** The `[knowless dev:<from>] silent-miss: handle for
+  "X" does not exist (openRegistration=false)` stderr hint
+  introduced in AF-7.2 was buried in the CHANGELOG; it now leads
+  the dev-setup section. First-time closed-reg friction was costing
+  every adopter the same ~30 min; the hint cuts that to seconds
+  but only if you know it exists.
+
 ## [0.1.9] — 2026-04-28
 
 addypin manual smoke turned up one real bug, one defaults footgun,
