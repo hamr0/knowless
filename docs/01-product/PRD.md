@@ -92,20 +92,20 @@
 > (§14.38–14.42); the line is "timestamp is a security signal,
 > location is surveillance."
 >
-> **v0.10 update:** Six decisions consolidated after the
-> dependency / store / timing review:
+> **v0.10 update (superseded by v0.15 — see below):** Six
+> decisions consolidated after the dependency / store / timing
+> review:
 >
-> 1. **Storage simplified.** `better-sqlite3` is the only store
->    backend. The Node-22 + `node:sqlite` path was dropped because
->    `node:sqlite` is gated on `--experimental-sqlite` in Node 22
->    (stderr warning on every startup, runtime flag required in
->    every systemd unit / Docker entrypoint / `npx` invocation).
->    One stable dep beats one experimental stdlib module for a
->    library whose pitch is "no fuss." See §16.4 (rewritten).
+> 1. ~~**Storage simplified.** `better-sqlite3` is the only store~~
+>    ~~backend.~~ **Reverted in v0.2.0 (PRD v0.15).** Storage moves
+>    to `node:sqlite` (stdlib). `--experimental-sqlite` was
+>    unflagged in Node 22.13 (Jan 2025); the C++20-toolchain cost
+>    that `better-sqlite3` imposed on RHEL 8/9 self-hosters was the
+>    blocking concern (AF-2.29). See §16.4 (rewritten v0.15).
 >
-> 2. **Node version dropped to 20+** (LTS until April 2026),
->    widening the homeserver audience meaningfully — many distros
->    still ship Node 20.
+> 2. ~~**Node version dropped to 20+**~~ **Bumped to 22.5+ in v0.2.0**
+>    so `node:sqlite` is available unflagged. Node 20 EOLs April
+>    2026 anyway.
 >
 > 3. **`nodemailer` retained.** Considered dropping for vanilla
 >    `node:net` SMTP submission, but homeserver MTAs vary
@@ -113,7 +113,7 @@
 >    absorbs the response-quirk variance across them. The
 >    AGENT_RULES "security-aware / vetted-library-for-parsing"
 >    carve-out applies — loosely — to wire-format reliability.
->    Production dep count: two (`nodemailer`, `better-sqlite3`).
+>    Production dep count (v0.2.0+): **one** (`nodemailer`).
 >
 > 4. **Timing envelope narrowed (FR-6).** Strict equivalence now
 >    applies only to registered-vs-unregistered (the enumeration
@@ -551,9 +551,9 @@ parent-domain scoped.
 
 - [x] All public APIs implemented per `SPEC.md`
 - [x] Source small enough to audit in an afternoon (no hard LOC cap)
-- [x] Production dependency count = 2 (`nodemailer`,
-      `better-sqlite3`)
-- [x] All tests pass on Node 20+
+- [x] Production dependency count = 1 (`nodemailer`; storage uses
+      `node:sqlite` from stdlib as of v0.2.0)
+- [x] All tests pass on Node 22.5+
 - [x] Silent-on-miss timing test passes the practical-effect-size
       bar: delta_mean(hit, miss) < 1ms over ≥1000 iterations
       locally (per FR-6)
@@ -942,10 +942,11 @@ expiry, not just relied on the client cookie expiry.
 
 ### 7.9 Storage
 
-**FR-32.** The library MUST ship a default SQLite-backed store
-using `better-sqlite3`. No alternate built-in backend; no
-`node:sqlite` fallback. Operators wanting a different store
-implement the store interface (FR-33).
+**FR-32.** The library MUST ship a default SQLite-backed store.
+As of v0.2.0 the implementation uses `node:sqlite` (Node stdlib);
+prior versions used `better-sqlite3`. No alternate built-in
+backend. Operators wanting a different store implement the store
+interface (FR-33).
 
 **FR-33.** The store interface MUST be defined and documented to
 allow operator-provided alternatives (Postgres, Redis, in-memory,
@@ -1369,9 +1370,10 @@ The complete stack, consolidated for one-glance reference.
 | Package | Why | License | Maintainer |
 |---|---|---|---|
 | `nodemailer` | SMTP composition + delivery to localhost MTA. Per AGENT_RULES security-aware-parsing carve-out applied loosely — abstracts MTA response-quirk variance across Postfix / Exim / OpenSMTPD / sendmail, header folding, line-ending tolerance, dot-stuffing edge cases. | MIT | Andris Reinman |
-| `better-sqlite3` | Synchronous SQLite via N-API. Chosen over `node:sqlite` because the latter is `--experimental-sqlite`-flagged in Node 22 (stderr warning + runtime flag in every invocation). One stable, MIT-licensed dep beats one experimental stdlib module. | MIT | Joshua Wise |
 
-**Total: 2 production dependencies. Both stable, both MIT, both well-maintained.**
+**Total: 1 production dependency** (as of v0.2.0). Storage uses
+`node:sqlite` (Node stdlib, no native compile). `better-sqlite3` was
+the storage backend in v0.1.x — see §16.4 for the v0.15 revisit.
 
 ### 10.3 Stdlib usage
 
@@ -1770,34 +1772,48 @@ This was the major late-stage shift in the design conversation.
 The earlier "primitive + bring your own mailer" version was
 philosophically purer but practically weaker.
 
-### 16.4 Why Node 20+ and `better-sqlite3` (revised v0.10)
+### 16.4 Why Node 22.5+ and `node:sqlite` (revised v0.15)
 
-**Decision:** Target Node 20+. Use `better-sqlite3` as the only
-store backend. No `node:sqlite` path, no version-conditional
-fallback.
+**Decision (v0.2.0):** Target Node 22.5+. Use `node:sqlite` (Node
+stdlib) as the only store backend. Drops `better-sqlite3`.
 
-**Reasoning (revised v0.10):** Earlier drafts targeted Node 22+
-specifically to use the built-in `node:sqlite`, on the theory
-that one fewer production dep was worth the version bump. In
-practice `node:sqlite` is gated on `--experimental-sqlite` in
-Node 22 — it emits an experimental-feature warning to stderr on
-every startup and requires the flag in every invocation (systemd
-units, Docker entrypoints, `npx knowless-server`). For a library
-whose pitch is "no fuss," that's persistent operator friction
-for marginal benefit.
+**Reasoning (revised v0.15):** The v0.10 decision to target Node 20
++ `better-sqlite3` cited two reasons: (1) `node:sqlite` was
+flag-gated in early Node 22 with a stderr experimental warning
+on every invocation, (2) Node 20 was the widest LTS floor.
 
-`better-sqlite3` is stable, synchronous (the right shape for our
-access patterns — we don't have an event-loop-blocking concern
-at our scale), N-API-based (no rebuild on Node version updates),
-MIT-licensed, and has been the standard SQLite library for Node
-for years. One stable dep beats one experimental stdlib module.
+Both have aged out:
 
-The Node 22+ requirement is dropped in favor of Node 20+. Node 20
-is LTS until April 2026, which widens the homeserver audience
-meaningfully — many distros (Debian stable, RHEL, etc.) still
-ship 20. The cost of holding to 22+ for ideological purity was
-real adopter friction; the benefit (fewer stdlib parts) didn't
-materialize because of the experimental flag.
+- `node:sqlite` was unflagged in Node 22.13 (Jan 2025) and is
+  fully stable in Node 24 LTS (Oct 2025). The remaining friction
+  is one experimental warning at first import on 22.x, suppressible
+  with `--no-warnings` and absent on 24+. Persistent operator
+  friction has gone to ~zero.
+- Node 20 reaches EOL in April 2026 (i.e. essentially now). The
+  "widest LTS floor" argument flips: 22.5+ IS the widest LTS floor
+  going forward.
+- The cost of `better-sqlite3` turned out to be substantial: it
+  requires a C++20 toolchain on every install. The PRD §4.2
+  self-hoster audience disproportionately runs RHEL 8/9 / Alma /
+  Rocky / Amazon Linux 2 — distros that ship gcc 8 or 11 by
+  default. addypin's M11 deploy hit this on a stock RHEL 8 host.
+  AGENT_RULES "vanilla > stdlib > external" was being violated for
+  what turned out to be migration-period concerns, not durable
+  ones.
+
+The v0.2.0 swap closes AF-2.29: zero native compile, one production
+dep (`nodemailer`), ~40 → ~2 transitive packages, no `gcc` / `make`
+/ Python during `npm install`. Public `Store` interface (SPEC §13)
+is byte-for-byte identical so the change is internal-only.
+
+> **Pre-v0.2.0 history (v0.10 reasoning, archived):** Earlier
+> drafts targeted Node 22+ specifically to use the built-in
+> `node:sqlite`. In Node 22 it was gated on `--experimental-sqlite`
+> with a stderr warning and a runtime flag in every invocation,
+> so v0.10 decided one stable external dep beat one flag-gated
+> stdlib module and dropped to Node 20 + `better-sqlite3`. v0.15
+> revisits this once the flag-gate dropped and the C++20-toolchain
+> cost became visible.
 
 ### 16.5 Why JavaScript, not TypeScript
 
@@ -2334,6 +2350,7 @@ is missing the defense.
 | AF-2.26 | No documented dev-time mail inspection workflow | `devLogMagicLinks` covers the URL but not subject/body/footer rendering. New adopters wiring `bodyFooter` or `subjectOverride` re-derive the same MailHog-on-1025 trick. Surfaced by addypin manual smoke. |
 | AF-2.27 | Default per-IP rate-limit caps cripple local dev | `maxLoginRequestsPerIpPerHour: 30` and `maxNewHandlesPerIpPerHour: 3` are tuned for prod but trip in minutes during local dev from `127.0.0.1`. The counters persist in SQLite across restarts, so the operator can't even reboot out of it. No GUIDE mention of the dev workaround. Surfaced by addypin manual smoke. |
 | AF-2.28 | Silent-miss debug line undocumented as a feature | The `[knowless dev:<from>] silent-miss: ...` stderr hint introduced in AF-7.2 is excellent at surfacing the closed-reg-no-handle case but is buried in the changelog. Adopters hit closed-reg friction once and benefit forever; promoting it in the GUIDE turns 30-min debug sessions into 30-second ones. |
+| AF-2.29 | `better-sqlite3` forces a C++20 toolchain on every install | The PRD §4.2 self-hoster audience disproportionately runs long-LTS distros (RHEL 8/9, Alma, Rocky, Amazon Linux 2) that ship gcc 8 / 11 by default. `npm install knowless` fails on stock images. The native compile gives marginal performance for knowless's workload while violating AGENT_RULES "vanilla > stdlib > external" — `node:sqlite` covers our surface area as of Node 22.5. Surfaced by addypin M11 deploy. |
 
 ### 17.3 Priority-ranked hardening backlog
 
@@ -2449,6 +2466,19 @@ Both pure docs.
 - **AF-17:** Silent-miss debug line promoted in the dev section
   as the "30-second-instead-of-30-minute closed-reg debugger"
   (closes AF-2.28). ✓
+
+**v0.2.0 — no native compile:**
+
+Headline release. Drops `better-sqlite3` for `node:sqlite` (stdlib).
+Removes the C++20 toolchain requirement that blocked addypin's M11
+deploy on RHEL 8 and would have blocked every future self-hoster on
+long-LTS distros.
+
+- **AF-18:** Migrate storage to `node:sqlite` (closes AF-2.29).
+  Bumps Node floor 20 → 22.5+. One production dep (`nodemailer`).
+  ~40 transitive packages → ~2. No native compile, no gcc, no
+  make, no Python during install. Public API byte-for-byte
+  identical; all 192 tests pass on first run after the swap. ✓
 
 ### 17.4 Note on FR-6 timing test (AF-1.8)
 

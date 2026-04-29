@@ -16,14 +16,63 @@ Versioning is [SemVer](https://semver.org/).
 ## [Unreleased]
 
 - **Turnkey Docker image** (`knowless/knowless-server:0.2.x`)
-  bundling Postfix + null-route + the binary so a self-hoster
-  runs `docker compose up` and has a working auth gateway in
-  one step. Material UX win for the PRD §4.2 self-hoster
-  audience. Targeted for v0.2.0.
+  bundling Postfix + null-route + the binary. Now meaningfully
+  smaller and faster to build because v0.2.0 dropped the native
+  compile dep. Targeted for v0.2.1.
 - Caddy forward-auth Docker integration test (TASKS.md 6.8).
 - `knowless-server --check-null-route`: CLI probe that submits a
   test message to `shamRecipient` and confirms the local MTA
-  discarded it. Targeted for v0.2.0.
+  discarded it. Targeted for v0.2.1.
+
+## [0.2.0] — 2026-04-28
+
+**No native compile. One production dep.** Drops `better-sqlite3`
+in favour of `node:sqlite` (Node stdlib). Adopters on long-LTS
+distros (RHEL 8/9, Alma, Rocky, Amazon Linux 2) no longer need a
+C++20 toolchain to `npm install knowless`.
+
+### Breaking
+
+- **Node floor bumped: `>=20.0.0` → `>=22.5.0`.** `node:sqlite`
+  requires Node 22.5+; unflagged stable on Node 24 LTS. Node 20
+  reaches EOL April 2026.
+- **`better-sqlite3` removed from `dependencies`.** Down to one
+  production dep (`nodemailer`). Transitive package count goes
+  from ~40 to ~2. No `prebuild-install`, no `gcc`, no `make`,
+  no Python during install.
+- **Storage internals changed**, public API unchanged. The
+  `createStore()` interface (SPEC §13) is byte-for-byte identical.
+  All 192 tests pass on first run after the swap.
+
+### Migration
+
+- **For knowless library adopters:** ensure your runtime is
+  Node 22.5+. If you pinned `better-sqlite3` somewhere yourself
+  for unrelated reasons, that's now your call. Otherwise:
+  ```sh
+  npm install knowless@0.2.0
+  ```
+  No code changes on your side. Existing SQLite databases
+  continue to work — same schema, same WAL mode, same
+  prepared statements. Sessions and handles persist across
+  the upgrade.
+- **For `knowless-server` operators:** ensure the host runs
+  Node 22.5+. If you ran `dnf install gcc-toolset-13` to get
+  v0.1.x to compile, you can remove it after the upgrade —
+  v0.2.0 doesn't need it. The systemd unit and env-var config
+  are unchanged.
+- **You may see one `ExperimentalWarning` from `node:sqlite`
+  at first import** on Node 22.x. Suppress with `--no-warnings`
+  or run on Node 24 LTS where the API is fully stable.
+
+### Internal
+
+- New `makeTransaction(db, fn)` adapter in `src/store.js`
+  replaces `better-sqlite3`'s `db.transaction()` wrapper. Uses
+  `BEGIN IMMEDIATE` / `COMMIT` / `ROLLBACK` directly — same
+  serialisation guarantee for the transactional cap-check
+  (SPEC §4.7) and account-deletion paths (FR-37a).
+- Closes AF-18 (the addypin RHEL 8 deployment trap).
 
 ## [0.1.10] — 2026-04-28
 

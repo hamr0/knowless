@@ -1,6 +1,6 @@
 {
   "name": "knowless",
-  "version": "0.1.10",
+  "version": "0.2.0",
   "description": "Small, opinionated, full-stack passwordless auth for Node.js services that don't need to email their users for anything but the sign-in link.",
   "type": "module",
   "main": "./src/index.js",
@@ -23,14 +23,13 @@
     "knowless.context.md"
   ],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.5.0"
   },
   "scripts": {
     "test": "node --test 'test/**/*.test.js'",
     "lint": "find src bin -type f \\( -name '*.js' -o -name 'knowless-server' \\) -exec node --check {} \\;"
   },
   "dependencies": {
-    "better-sqlite3": "^11.0.0",
     "nodemailer": "^8.0.7"
   },
   "license": "Apache-2.0",

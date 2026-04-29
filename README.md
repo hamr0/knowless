@@ -7,7 +7,7 @@ that don't need to email their users for anything but the sign-in link.
 npm install knowless
 ```
 
-> v0.1.10 | Node.js >= 20 | 2 deps (nodemailer, better-sqlite3) | Apache-2.0
+> v0.2.0 | Node.js >= 22.5 | **1 production dep (nodemailer)** | Apache-2.0
 
 ## Why this exists
 
@@ -104,7 +104,7 @@ config or injection.
 | `maxLoginRequestsPerIpPerHour`, `maxNewHandlesPerIpPerHour` | `30`, `3` | Raise for genuinely shared NATs; `0` to disable in dev |
 | `trustedProxies` | `[127.0.0.1, ::1]` | Plain IPs **and** CIDRs (`10.0.0.0/8`) for k8s/docker/cgnat |
 | `bypassRateLimit` (per-call) | `false` | Trusted CLI/cron callers via `auth.startLogin` |
-| `store` | built-in better-sqlite3 | Inject your own store (Postgres, etc.) |
+| `store` | built-in `node:sqlite` | Inject your own store (Postgres, etc.) |
 | `mailer` | built-in nodemailer | Inject your own mailer |
 | `transportOverride` | none | Pass a custom `nodemailer.createTransport` |
 | `onSweepError(err)` | none | Operator alerting hook for sweeper failures |
@@ -135,9 +135,9 @@ as its auth+mail layer. The integration delta:
   fingerprinting helpers, the matching test files)
 - **~35 lines of knowless wiring added**
 - **~33× reduction** on the auth/mail surface
-- **Two production deps** (knowless inherits `nodemailer` +
-  `better-sqlite3`; addypin gains nothing it wasn't already entitled
-  to)
+- **One production dep** (`nodemailer` only; v0.2.0 dropped
+  `better-sqlite3` for `node:sqlite`, the stdlib SQLite driver — no
+  C++ toolchain, no native compile, ~40 transitive packages → 2)
 
 The integration round produced the audit findings AF-7 through AF-17
 that drove v0.1.5 → v0.1.10. See [`docs/01-product/PRD.md`](docs/01-product/PRD.md)

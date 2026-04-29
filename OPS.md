@@ -548,13 +548,14 @@ CLI invoked by Postfix's `pipe` transport, or a web server plus a
 cron worker handling 48h reminders. Each process instantiates
 `knowless({...})` against the same `dbPath`.
 
-**Why this works.** `better-sqlite3` opens the database in WAL mode
-by default (knowless explicitly sets `journal_mode=WAL` at startup).
-WAL allows multiple readers and one writer concurrently, with the
-OS-level locking semantics needed for cross-process safety. Every
-write goes through a prepared statement under a SQLite transaction,
-so two processes inserting tokens or sessions at the same time can't
-corrupt the table.
+**Why this works.** knowless opens the database in WAL mode at
+startup (`PRAGMA journal_mode = WAL`). WAL allows multiple readers
+and one writer concurrently, with the OS-level locking semantics
+needed for cross-process safety. Every write goes through a prepared
+statement under a SQLite transaction, so two processes inserting
+tokens or sessions at the same time can't corrupt the table. Since
+v0.2.0 the storage backend is `node:sqlite` (Node stdlib) — no
+native compile, no `gcc` toolchain on the host.
 
 **What to know about each subsystem under multi-process:**
 

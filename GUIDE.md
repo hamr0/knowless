@@ -550,7 +550,7 @@ Full options table:
 | `shamRecipient` | no | `null@knowless.invalid` | Where sham mail goes (your MTA must discard it). |
 | `sweepIntervalMs` | no | `300000` | Sweeper tick (5 min default). |
 | `failureRedirect` | no | (= `loginPath`) | Where /auth/callback failures redirect. **Mode-A adopters:** if you don't mount `loginForm`, set this to a route you actually serve (e.g. `/`) — otherwise expired/replayed magic-link clicks 302 to a 404. |
-| `store` | no | (built-in better-sqlite3) | Inject your own store implementation. |
+| `store` | no | (built-in `node:sqlite`) | Inject your own store implementation. |
 | `mailer` | no | (built-in nodemailer) | Inject your own mailer. |
 
 ## FAQ
@@ -659,15 +659,19 @@ mail account is later compromised.
 
 ## Constraints / install footprint
 
-- **Two direct dependencies.** `nodemailer` (SMTP submission) and
-  `better-sqlite3` (storage). Both audited and pinned at major
-  versions in `package.json`.
-- **~40 transitive packages** in a typical install. The bulk are
-  `nodemailer`'s ecosystem deps (mostly idle in our usage) and
-  `better-sqlite3`'s build-time prebuild fetcher. You may see one
-  deprecation warning during install for `prebuild-install` —
-  build-chain noise, not runtime code.
-- **Node ≥ 20.** Uses `node:util parseArgs`, `node:net BlockList`
-  for CIDR support, and `--env-file=` for the standalone server.
-- **No optional deps, no postinstall scripts** beyond `better-
-  sqlite3`'s native binding fetch.
+- **One direct dependency.** `nodemailer` (SMTP submission). Storage
+  is `node:sqlite` (Node stdlib, no native compile, no toolchain
+  required on the host).
+- **~2 transitive packages** in a typical install (down from ~40 in
+  v0.1.x). No `prebuild-install`, no `gcc`, no `make`, no Python.
+  `npm ci` works on stock RHEL 8 / Alma / Rocky / Amazon Linux 2
+  with no extra packages. Self-hosters: `npm install knowless` is
+  done.
+- **Node ≥ 22.5.** `node:sqlite` requires this floor (introduced
+  22.5, unflagged in 22.13+, fully stable in 24 LTS). Drops Node
+  20 — about to EOL anyway.
+- **No optional deps, no postinstall scripts.**
+
+> `node:sqlite` may print one `ExperimentalWarning` to stderr on
+> first import. Suppress with `--no-warnings` or by running on
+> Node 24 LTS where the API is fully stable.

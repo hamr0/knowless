@@ -1,4 +1,32 @@
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
+
+/**
+ * Wrap a function in a SQLite transaction. Mirrors better-sqlite3's
+ * `db.transaction(fn)` shape: returns a function that opens
+ * BEGIN IMMEDIATE, runs `fn`, COMMITs on success, ROLLBACKs on
+ * throw, and propagates the original error.
+ *
+ * BEGIN IMMEDIATE rather than BEGIN DEFERRED — knowless's
+ * transactional cap-check (SPEC §4.7) needs a write lock from the
+ * start to serialise concurrent issuance attempts.
+ *
+ * @param {DatabaseSync} db
+ * @param {Function} fn
+ */
+function makeTransaction(db, fn) {
+  return (...args) => {
+    db.exec('BEGIN IMMEDIATE');
+    let result;
+    try {
+      result = fn(...args);
+    } catch (err) {
+      try { db.exec('ROLLBACK'); } catch { /* tolerate stack-unwind issues */ }
+      throw err;
+    }
+    db.exec('COMMIT');
+    return result;
+  };
+}
 
 /**
  * Default token-sweeper grace: keep used tokens for 24h after redemption
@@ -76,11 +104,11 @@ const DDL = `
  * @returns {Store}
  */
 export function createStore(dbPath = ':memory:') {
-  const db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('synchronous = NORMAL');
-  db.pragma('foreign_keys = OFF');
-  db.pragma('temp_store = MEMORY');
+  const db = new DatabaseSync(dbPath);
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA synchronous = NORMAL');
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('PRAGMA temp_store = MEMORY');
   db.exec(DDL);
 
   const existing = db
@@ -166,7 +194,7 @@ export function createStore(dbPath = ':memory:') {
   };
 
   // Transactional cap-check + insert per SPEC §4.7.
-  const insertTokenAtomic = db.transaction(
+  const insertTokenAtomic = makeTransaction(db,
     (tokenHash, handle, expiresAt, nextUrl, isSham, maxActive, now) => {
       if (maxActive > 0) {
         const { n: count } = stmt.countActiveTokens.get(handle, now);
@@ -181,7 +209,7 @@ export function createStore(dbPath = ':memory:') {
   );
 
   // Transactional account deletion per FR-37a.
-  const deleteHandleAtomic = db.transaction((handle) => {
+  const deleteHandleAtomic = makeTransaction(db, (handle) => {
     stmt.deleteHandleSessions.run(handle);
     stmt.deleteHandleTokens.run(handle);
     stmt.deleteHandleRow.run(handle);

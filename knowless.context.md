@@ -1,7 +1,7 @@
 # knowless -- Integration Guide
 
 > For AI assistants and developers wiring knowless into a project.
-> v0.1.10 | Node.js >= 20 | 2 deps (nodemailer, better-sqlite3) | Apache-2.0
+> v0.2.0 | Node.js >= 22.5 | 1 dep (nodemailer) | Apache-2.0
 
 ## What this is
 
@@ -333,7 +333,7 @@ URL/email -> handlers.js (login: 12-step sham-work flow per SPEC §7.3)
           -> handle.js   (normalize ASCII-only, HMAC-SHA256)
           -> abuse.js    (per-IP rate limit, per-handle token cap, honeypot)
           -> token.js    (32 random bytes, base64url; SHA-256 at rest)
-          -> store.js    (better-sqlite3, transactional, prepared statements)
+          -> store.js    (node:sqlite, transactional, prepared statements)
           -> mailer.js   (raw RFC822 7bit; nodemailer for SMTP submission only)
           -> session.js  (HMAC-signed cookie with "sess\\0" domain tag)
           -> form.js     (hardcoded HTML5; no JS, no external resources)
@@ -344,7 +344,7 @@ URL/email -> handlers.js (login: 12-step sham-work flow per SPEC §7.3)
 |---|---|---|
 | `src/index.js` | ~140 | Public factory, sweeper, re-exports |
 | `src/handlers.js` | ~310 | login (sham), callback, verify, logout, loginForm, validateNextUrl |
-| `src/store.js` | ~210 | better-sqlite3 store; SPEC §13 interface |
+| `src/store.js` | ~240 | node:sqlite store + transaction adapter; SPEC §13 interface |
 | `src/mailer.js` | ~120 | RFC822 raw composition + nodemailer SMTP submission |
 | `src/abuse.js` | ~95 | Source-IP determination, rate limits |
 | `src/handle.js` | ~50 | Email normalization, handle derivation |
@@ -433,7 +433,7 @@ rate-limits) belongs above the library.
     sweeper and closes the SQLite handle. Without it, your
     process won't exit cleanly. The sweeper timer is `unref()`d
     so it won't *prevent* exit, but the SQLite handle held by
-    `better-sqlite3` will leave a finalizer warning.
+    `node:sqlite` will leave a finalizer warning.
 
 12. **CSRF defense is the Origin/Referer whitelist, not a token.**
     Modern browsers always emit `Origin` on cross-origin POSTs;
@@ -487,8 +487,9 @@ rate-limits) belongs above the library.
 - **Node 20+** -- targeting LTS; tested on Node 22
 - **Plain ES modules** -- no TypeScript source, no build step;
   ships JSDoc + (eventual) `.d.ts`
-- **Two production deps** -- `nodemailer` (SMTP submission) and
-  `better-sqlite3` (storage). No third dep without revisiting
+- **One production dep** -- `nodemailer` (SMTP submission). Storage
+  uses `node:sqlite` (stdlib, no native compile). No second runtime
+  dep without revisiting
   AGENT_RULES External Dependency Checklist.
 - **Localhost MTA only** -- no remote SMTP, no vendor SDKs.
   Operators run their own Postfix / OpenSMTPD / Exim.

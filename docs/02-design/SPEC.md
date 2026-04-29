@@ -368,7 +368,7 @@ NFR-3 requires this completes in <10ms p99. The POC measured
 
 ## 6. Database schema
 
-### 6.1 DDL (better-sqlite3)
+### 6.1 DDL (`node:sqlite`)
 
 ```sql
 PRAGMA journal_mode = WAL;
@@ -867,9 +867,9 @@ verifySession(cookie)  // ~70μs in POC, 137× headroom
 
 Implementations MUST cache the prepared SQLite statement for
 `SELECT ... FROM sessions WHERE sid_hash = ?` to avoid the
-per-call parse cost. better-sqlite3 caches prepared
-statements transparently when reused via the same
-`db.prepare(...)` object — pin it once at module load.
+per-call parse cost. `node:sqlite` (and `better-sqlite3` before
+v0.2.0) caches prepared statements transparently when reused via
+the same `db.prepare(...)` object — pin it once at module load.
 
 ### 9.4 Programmatic session resolution (`handleFromRequest`)
 
@@ -1107,7 +1107,8 @@ Operator-overridden subjects MUST be:
 
 ## 13. Store interface
 
-The library ships a default `better-sqlite3` implementation.
+The library ships a default `node:sqlite` implementation (was
+`better-sqlite3` before v0.2.0; storage interface unchanged).
 Operators wanting Postgres / Redis / in-memory implement
 this interface and pass it to `knowless({store: myStore, ...})`.
 
@@ -1161,10 +1162,11 @@ interface Store {
 }
 ```
 
-All methods are synchronous. `better-sqlite3` is synchronous
-by design, and the POC confirmed this is fast enough at our
-scale. Async store implementations MAY wrap with a sync facade
-or implement their own scheduling.
+All methods are synchronous. Both `better-sqlite3` (pre-v0.2.0)
+and `node:sqlite` (v0.2.0+) are synchronous by design, and the POC
+confirmed this is fast enough at our scale. Async store
+implementations MAY wrap with a sync facade or implement their
+own scheduling.
 
 ### 13.1 Method semantics
 
