@@ -273,7 +273,13 @@ export function knowless(options = {}) {
 }
 
 export { createStore } from './store.js';
-export { createMailer, composeBody, validateSubject, validateBodyFooter } from './mailer.js';
+export {
+  createMailer,
+  composeBody,
+  validateSubject,
+  validateBodyFooter,
+  validateBodyOverride,
+} from './mailer.js';
 export { createHandlers } from './handlers.js';
 export { renderLoginForm } from './form.js';
 export { normalize, deriveHandle, secretBytes } from './handle.js';

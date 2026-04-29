@@ -7,7 +7,7 @@ that don't need to email their users for anything but the sign-in link.
 npm install knowless
 ```
 
-> v0.2.1 | Node.js >= 22.5 | **1 production dep (nodemailer)** | Apache-2.0
+> v0.2.2 | Node.js >= 22.5 | **1 production dep (nodemailer)** | Apache-2.0
 
 ## Where to go next
 

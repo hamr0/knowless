@@ -1,7 +1,7 @@
 # knowless -- Integration Guide
 
 > For AI assistants and developers wiring knowless into a project.
-> v0.2.1 | Node.js >= 22.5 | 1 dep (nodemailer) | Apache-2.0
+> v0.2.2 | Node.js >= 22.5 | 1 dep (nodemailer) | Apache-2.0
 
 ## What this is
 
@@ -160,7 +160,7 @@ const auth = knowless({
 | `handleFromRequest` | (req) | string \| null | Programmatic session resolver for in-process middleware. Returns the handle if the cookie is valid, else null. SPEC §9.4. |
 | `deleteHandle` | (handle: string) | void | Atomic delete of handle + tokens + sessions (FR-37a, GDPR) |
 | `revokeSessions` | (handle: string) | number | Drops every session for `handle` without deleting the account ("log out everywhere"). Returns rows removed. AF-6.1. |
-| `startLogin` | ({email, nextUrl?, sourceIp?, subjectOverride?, bypassRateLimit?}) | Promise\<{handle, submitted: true}\> | Programmatic magic-link send for "use first, claim later" flows. Same 12-step sham-work as form. `subjectOverride` (AF-9) replaces `cfg.subject` per call. `bypassRateLimit: true` (AF-10) opts trusted server-side callers (CLI, cron, worker) out of IP-rate-limit accounting. SPEC §7.3a. AF-7.3. |
+| `startLogin` | ({email, nextUrl?, sourceIp?, subjectOverride?, bodyOverride?, bypassRateLimit?}) | Promise\<{handle, submitted: true}\> | Programmatic magic-link send for "use first, claim later" flows. Same 12-step sham-work as form. `subjectOverride` (AF-9) replaces `cfg.subject` per call. `bodyOverride` (AF-26, v0.2.2) is a `({url}) => string` template fn that replaces the default body — knowless still composes the URL and validates the rendered output (ASCII, URL on its own line, ≤2048 chars); `bodyFooter` still appends. `bypassRateLimit: true` (AF-10) opts trusted server-side callers (CLI, cron, worker) out of IP-rate-limit accounting. SPEC §7.3a. AF-7.3. |
 | `deriveHandle` | (email: string) | string | `HMAC-SHA256(secret, normalize(email))` using the configured secret. Normalizes input (lowercase + trim) so `Alice@X.com` and `alice@x.com` produce the same handle. Match what `startLogin` and `POST /login` compute. AF-7.4 / AF-13. |
 | `_sweep` | -- | void | Trigger one sweep tick on demand (tests, operator scripts). AF-5.3. |
 | `verifyTransport` | -- | Promise\<true\> | Probe the configured SMTP transport (v0.2.1). Resolves true on success, rejects with the underlying error. Adopters call this explicitly when they want fail-fast on misconfigured SMTP at boot — no auto-on-boot variant by design (k8s readiness probes / docker-compose ordering would fail boot for the wrong reason). AF-20. |
@@ -178,6 +178,7 @@ import {
   composeBody,      // pure: build the mail body
   validateSubject,  // pure: validate operator-supplied subject
   validateBodyFooter, // pure: validate operator-supplied footer (AF-8.2)
+  validateBodyOverride, // pure: validate per-call body override (AF-26)
   renderLoginForm,  // pure: HTML5 page rendering
   normalize,        // pure: email normalization
   deriveHandle,     // pure: HMAC-SHA256(hex-decoded secret, email)

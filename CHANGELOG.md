@@ -15,13 +15,75 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-**v0.2.1 is feature-complete.** v1.0.0 is the planned next release —
-walk-away promotion, no API changes. Three items previously tracked
-here were cut after stress-testing them against the
-walk-away-at-v1.0.0 lens; rationale for each kept in this changelog
-under the v0.2.1 release block (see "Cut from v0.2.x backlog" below)
-so future contributors see the worked reasoning, not just the
-omissions.
+**v0.2.2 is feature-complete.** v1.0.0 is the planned next release —
+walk-away promotion, no API changes.
+
+## [0.2.2] — 2026-04-29
+
+**One feature add at the end of v0.2.x: per-call body customization
+for `auth.startLogin` (AF-26).** Closes the last addypin gap before
+v1.0.0 promotion — adopters with multiple Mode-A flows (pin
+confirmation, login, expiry warning) can now phrase the email body
+to match per-call subjects without re-implementing token mint /
+sham-work / SMTP submit.
+
+### Added
+
+- **`bodyOverride: ({url}) => string` arg on `auth.startLogin`
+  (AF-26).** A template function called per-call after the magic-
+  link URL is composed. knowless still owns URL composition (so the
+  v0.11 POC 7bit URL-line invariant stays in knowless's control) and
+  validates the rendered output. `bodyFooter` continues to append
+  after the override; the `lastLogin` line does NOT auto-append on
+  overridden bodies — the template owns content end-to-end.
+
+  ```js
+  await auth.startLogin({
+    email,
+    subjectOverride: `Confirm your pin: ${shortcode}`,
+    bodyOverride: ({ url }) =>
+      `Confirm your pin "${shortcode}":\n\n${url}\n\n` +
+      `Link expires in 15 minutes.\n`,
+  });
+  ```
+
+- **`validateBodyOverride(body, url)` re-export.** Pure validator
+  exposed alongside the other `validate*` re-exports. Same validation
+  knowless runs internally on the override return value:
+  - Non-empty string, ≤ 2048 chars
+  - ASCII only
+  - No CR (header-injection defense)
+  - URL appears exactly once
+  - URL is on its own line (preserves the v0.11 POC 7bit URL-line
+    invariant — QP soft-breaks would break the link)
+
+  Throws on any violation. Adopters generally don't need to call this
+  directly — knowless validates the function's return value at
+  compose time — but it's exported for ahead-of-time tests.
+
+### Why this is in scope (and not a 'forum-style' rejected addition)
+
+The body has to be composed *after* the token is minted (the URL
+contains the token), so the caller can't just "send their own email"
+without re-implementing most of knowless. Bypassing knowless to send
+a custom body would mean rebuilding token mint + token-store insert
++ sham-work timing + SMTP submit — that's most of the library. The
+ASCII / URL-line / 7bit constraints are the right place to keep
+validating, and those live in knowless. Identity-layer concern,
+mechanism stays where the policy is.
+
+Contrast with the rejected items in the v0.2.1 backlog cull
+(disposable-domain, account-age, hashcash, Docker image): each of
+those passed the "could the adopter do this themselves?" test.
+Per-call body customization fails it.
+
+### Internal
+
+- 16 new tests in `test/integration/body-override.test.js` covering
+  happy path on real submissions, sham-branch parity (FR-6),
+  bodyFooter append behavior, lastLogin non-auto-append, every
+  validation error path, undefined/null pass-through, and the
+  re-exported `validateBodyOverride` helper. Test count: 207 → 223.
 
 ## [0.2.1] — 2026-04-29
 

@@ -140,6 +140,60 @@ export function composeBody({ tokenRaw, baseUrl, linkPath, lastLoginAt, bodyFoot
 }
 
 /**
+ * Validate a body produced by `startLogin`'s `bodyOverride` template
+ * function (AF-26). The override lets adopters phrase the email body
+ * to match per-call subjects (pin confirmation, login, etc.) without
+ * losing knowless's URL-composition / sham-work / 7bit invariants.
+ *
+ * Constraints (deliberately strict to preserve the v0.11 POC URL-line
+ * invariant — QP soft-breaks WILL break the magic link):
+ *   - non-empty string
+ *   - ≤ 2048 chars (operator-side overflow guard)
+ *   - ASCII only
+ *   - no CR (LF allowed; defense-in-depth header-injection guard)
+ *   - the magic-link URL appears EXACTLY ONCE
+ *   - that occurrence is on its own line (no leading or trailing
+ *     non-newline characters on the same line)
+ *
+ * Throws on any violation. Adopter is responsible for the rest of
+ * the body content (security advice, expiry hint, etc.); knowless
+ * does not enforce semantic content.
+ *
+ * @param {unknown} body
+ * @param {string} url  the magic-link URL knowless composed
+ * @returns {void} throws on invalid
+ */
+export function validateBodyOverride(body, url) {
+  if (typeof body !== 'string' || body.length === 0) {
+    throw new Error('bodyOverride must return a non-empty string');
+  }
+  if (body.length > 2048) {
+    throw new Error('bodyOverride must return ≤ 2048 chars');
+  }
+  if (!ASCII_RE.test(body)) {
+    throw new Error('bodyOverride must return ASCII');
+  }
+  if (body.includes('\r')) {
+    throw new Error('bodyOverride must not contain CR (header-injection defense)');
+  }
+  const occurrences = body.split(url).length - 1;
+  if (occurrences === 0) {
+    throw new Error('bodyOverride must include the magic-link URL exactly once');
+  }
+  if (occurrences > 1) {
+    throw new Error('bodyOverride must include the magic-link URL exactly once');
+  }
+  const lines = body.split('\n');
+  const ownLineCount = lines.filter((l) => l === url).length;
+  if (ownLineCount !== 1) {
+    throw new Error(
+      'bodyOverride must place the magic-link URL on its own line ' +
+        '(preserves the 7bit URL-line invariant; QP soft-breaks would break the link)',
+    );
+  }
+}
+
+/**
  * Validate operator-overridden subject per SPEC §12.5.
  * Throws on invalid; warns (returns warnings array) on suspicious-but-allowed.
  *

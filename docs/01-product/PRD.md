@@ -2526,6 +2526,31 @@ worked reasoning, not just the conclusions.
   design (FR-6); operator visibility lives in AF-19's hooks, never
   in the per-call return shape. ✓
 
+**v0.2.2 — last feature add before walk-away (2026-04-29):**
+
+addypin returned with one more genuine gap that closed cleanly under
+the lens: `auth.startLogin` accepted `subjectOverride` per call
+(AF-9) but the body was hardcoded to the "Click to sign in" template.
+With three distinct Mode-A flows (pin confirmation, login, expiry
+warning), subject and body disagreed in the user's inbox. The body
+has to be composed after token mint (URL contains the token), so the
+adopter can't sidestep knowless without re-implementing most of it.
+
+- **AF-26:** Per-call `bodyOverride: ({url}) => string` template fn
+  on `auth.startLogin`. knowless still composes the URL (preserves
+  the v0.11 POC 7bit URL-line invariant) and validates the rendered
+  output (ASCII, URL exactly once on its own line, ≤2048 chars, no
+  CR). `bodyFooter` continues to append; `lastLogin` line does NOT
+  auto-append on overrides — the template owns content. ✓
+
+This passes the lens cleanly: identity-layer concern (magic-link
+delivery payload), and the mechanism (URL composition + sham-work
+timing + 7bit invariants) cannot live with the adopter without
+forking. Contrast with the AF-23/24/25 cuts: each of those failed
+the "could the adopter do this themselves?" test, and so were
+relocated to adopter / perimeter / operator code. AF-26 fails that
+same test in the *library's* favor — knowless has to own this.
+
 **v0.2.1 post-release scope cull (walk-away stress-test, 2026-04-29):**
 
 After v0.2.1 shipped, the v0.2.x Unreleased backlog was stress-tested

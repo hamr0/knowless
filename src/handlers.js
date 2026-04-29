@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { normalize, deriveHandle } from './handle.js';
 import { issueToken, hashToken } from './token.js';
 import { newSid, signSession, verifySessionSignature } from './session.js';
-import { composeBody, validateSubject } from './mailer.js';
+import { composeBody, validateSubject, validateBodyOverride } from './mailer.js';
 import { renderLoginForm } from './form.js';
 import {
   buildTrustedPeers,
@@ -256,7 +256,14 @@ export function createHandlers({ store, mailer, config, events }) {
    *   handle is null only when the email failed to normalize (programmer
    *   bug for startLogin; same-shape silent for /login).
    */
-  async function runSendLink({ emailRaw, nextRaw, sourceIp, subject, bypassRateLimit = false }) {
+  async function runSendLink({
+    emailRaw,
+    nextRaw,
+    sourceIp,
+    subject,
+    bodyOverride,
+    bypassRateLimit = false,
+  }) {
     // Step 1: parse + normalize
     let emailNorm;
     try {
@@ -343,13 +350,31 @@ export function createHandlers({ store, mailer, config, events }) {
     // hammering of a single handle without per-event identity leakage.
     if (evicted > 0) ev.rateLimitHit();
 
-    const mailBody = composeBody({
-      tokenRaw: token.raw,
-      baseUrl: cfg.baseUrl,
-      linkPath: cfg.linkPath,
-      lastLoginAt,
-      bodyFooter: cfg.bodyFooter,
-    });
+    // AF-26: per-call body override for startLogin (Mode A). When
+    // provided, the adopter's template function receives the composed
+    // magic-link URL and returns the full body text. Same submit path,
+    // same sham work, same FR-6 timing equivalence — just lets adopters
+    // phrase the body to match per-call subjects (pin confirmation,
+    // login, expiry warning). bodyFooter still appends; lastLogin line
+    // does not (override is full-content replacement).
+    let mailBody;
+    if (typeof bodyOverride === 'function') {
+      const url = `${cfg.baseUrl}${cfg.linkPath}?t=${token.raw}`;
+      const rendered = bodyOverride({ url });
+      validateBodyOverride(rendered, url); // throws on invalid
+      mailBody = rendered;
+      if (cfg.bodyFooter) {
+        mailBody += `\n-- \n${cfg.bodyFooter}\n`;
+      }
+    } else {
+      mailBody = composeBody({
+        tokenRaw: token.raw,
+        baseUrl: cfg.baseUrl,
+        linkPath: cfg.linkPath,
+        lastLoginAt,
+        bodyFooter: cfg.bodyFooter,
+      });
+    }
 
     // AF-9: programmatic callers may override the subject per call
     // (addypin sends confirmation / login / expiry-warning all via
@@ -454,6 +479,7 @@ export function createHandlers({ store, mailer, config, events }) {
     nextUrl,
     sourceIp = '',
     subjectOverride,
+    bodyOverride,
     bypassRateLimit = false,
   } = {}) {
     // Programmer-error guards (AF-7.3). These DO throw; they're not
@@ -480,11 +506,20 @@ export function createHandlers({ store, mailer, config, events }) {
       validateSubject(subjectOverride); // throws on invalid
       subject = subjectOverride;
     }
+    // AF-26: per-call body override. The function is called inside
+    // runSendLink with the composed magic-link URL; its return value
+    // is validated by validateBodyOverride(). The arg-type check
+    // happens here at the API edge so a non-function bodyOverride
+    // fails fast, before any token is minted.
+    if (bodyOverride !== undefined && bodyOverride !== null && typeof bodyOverride !== 'function') {
+      throw new Error('startLogin: bodyOverride must be a function when provided');
+    }
     const { handle } = await runSendLink({
       emailRaw: email,
       nextRaw: nextUrl ?? null,
       sourceIp,
       subject,
+      bodyOverride,
       bypassRateLimit,
     });
     // Same-shape return: rate-limit / sham / real all collapse here.

@@ -299,6 +299,14 @@ app.post('/api/pins', async (req, res) => {
     // Per-call subject so the user can tell at a glance this is a
     // pin-confirmation, not a routine login. AF-9.
     subjectOverride: `Confirm your pin: ${shortcode}`,
+    // Per-call body so subject and body agree. AF-26 (v0.2.2).
+    // knowless still composes the URL and validates the rendered
+    // output (ASCII / URL on its own line / ≤2048 chars). bodyFooter
+    // still appends; the lastLogin line does NOT auto-append on
+    // overridden bodies — the template owns the content.
+    bodyOverride: ({ url }) =>
+      `Confirm your pin "${shortcode}":\n\n${url}\n\n` +
+      `This link expires in 15 minutes. If you didn't request it, ignore.\n`,
   });
   res.status(202).end();  // "we'll email you the link"
 });
