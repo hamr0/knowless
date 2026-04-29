@@ -267,11 +267,14 @@ share link," "submit a paste" — patterns where forcing a login
 app.post('/api/pins', async (req, res) => {
   const { email, lat, lng } = await readJsonBody(req);
   const owner = auth.deriveHandle(email);          // AF-7.4
-  await db.insertPendingPin({ owner, lat, lng });  // your code
+  const shortcode = await db.insertPendingPin({ owner, lat, lng });
   await auth.startLogin({                          // AF-7.3
     email,
     nextUrl: 'https://app.example.com/manage',
     sourceIp: req.socket.remoteAddress,
+    // Per-call subject so the user can tell at a glance this is a
+    // pin-confirmation, not a routine login. AF-9.
+    subjectOverride: `Confirm your pin: ${shortcode}`,
   });
   res.status(202).end();  // "we'll email you the link"
 });

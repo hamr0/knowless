@@ -9,6 +9,31 @@ Versioning is [SemVer](https://semver.org/).
 
 - Caddy forward-auth Docker integration test (TASKS.md 6.8).
 
+## [0.1.7] — 2026-04-28
+
+addypin integration round 3 — one small API addition.
+
+### Added
+
+- **`subjectOverride` arg on `auth.startLogin`.** Per-call subject
+  replaces the factory `subject` for that one mail. Validated by
+  the same rules (ASCII, ≤60 chars, no CR/LF) and throws on invalid
+  — programmer error, not silent miss. The subject is decided
+  before the hit/miss branch, so sham and real submissions carry
+  the same subject and no observer can distinguish outcomes by
+  subject. Spam-trigger warnings (`!!`, `FREE`, etc.) do not throw;
+  the caller has more context. Closes AF-9.1.
+
+  Example: addypin sends three magic-link variants with distinct
+  subjects:
+
+  ```js
+  await auth.startLogin({
+    email, nextUrl, sourceIp,
+    subjectOverride: `Confirm your pin: ${shortcode}`,
+  });
+  ```
+
 ## [0.1.6] — 2026-04-28
 
 addypin integration round 2 — one correctness fix (HMAC key handling)

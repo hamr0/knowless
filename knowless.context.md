@@ -147,7 +147,7 @@ const auth = knowless({
 | `handleFromRequest` | (req) | string \| null | Programmatic session resolver for in-process middleware. Returns the handle if the cookie is valid, else null. SPEC §9.4. |
 | `deleteHandle` | (handle: string) | void | Atomic delete of handle + tokens + sessions (FR-37a, GDPR) |
 | `revokeSessions` | (handle: string) | number | Drops every session for `handle` without deleting the account ("log out everywhere"). Returns rows removed. AF-6.1. |
-| `startLogin` | ({email, nextUrl?, sourceIp?}) | Promise\<{handle, submitted: true}\> | Programmatic magic-link send for "use first, claim later" flows. Same 12-step sham-work as form. SPEC §7.3a. AF-7.3. |
+| `startLogin` | ({email, nextUrl?, sourceIp?, subjectOverride?}) | Promise\<{handle, submitted: true}\> | Programmatic magic-link send for "use first, claim later" flows. Same 12-step sham-work as form. `subjectOverride` (AF-9) replaces `cfg.subject` for this call. SPEC §7.3a. AF-7.3. |
 | `deriveHandle` | (email: string) | string | HMAC-SHA256(secret, normalize(email)) using the configured secret. Use to compute owner-handles outside HTTP context. AF-7.4. |
 | `_sweep` | -- | void | Trigger one sweep tick on demand (tests, operator scripts). AF-5.3. |
 | `config` | -- | object | Merged effective config; safe to read (do not mutate) |

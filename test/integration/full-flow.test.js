@@ -870,6 +870,63 @@ test('startLogin: malformed email throws programmer error (AF-7.3)', async () =>
   h.close();
 });
 
+// --- AF-9: per-call subject override on startLogin ---
+
+test('startLogin: subjectOverride is used in place of factory subject (AF-9)', async () => {
+  const h = newHarness({ subject: 'Sign in to addypin' });
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  await h.handlers.startLogin({
+    email: REGISTERED,
+    subjectOverride: 'Confirm your addypin: ABC123',
+  });
+  assert.equal(h.sentMail.length, 1);
+  assert.match(h.sentMail[0].raw, /^Subject: Confirm your addypin: ABC123$/m);
+  // Factory subject not present.
+  assert.equal(h.sentMail[0].raw.includes('Subject: Sign in to addypin'), false);
+  h.close();
+});
+
+test('startLogin: omitted subjectOverride falls back to factory subject (AF-9)', async () => {
+  const h = newHarness({ subject: 'Your addypin login link' });
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  await h.handlers.startLogin({ email: REGISTERED });
+  assert.match(h.sentMail[0].raw, /^Subject: Your addypin login link$/m);
+  h.close();
+});
+
+test('startLogin: subjectOverride applies on sham path too (AF-9 / FR-6)', async () => {
+  // Closed-reg + unknown email = sham. Subject must be the override
+  // either way — different subject for hit vs miss would leak through
+  // the SMTP wire to anyone watching the operator's outbound mail
+  // queue. timing/shape equivalence covers all observable channels.
+  const h = newHarness();
+  await h.handlers.startLogin({
+    email: 'nobody@example.com',
+    subjectOverride: 'Confirm your addypin: XYZ789',
+  });
+  assert.equal(h.sentMail.length, 1);
+  assert.equal(h.sentMail[0].envelope.to[0], 'null@knowless.invalid');
+  assert.match(h.sentMail[0].raw, /^Subject: Confirm your addypin: XYZ789$/m);
+  h.close();
+});
+
+test('startLogin: throws on invalid subjectOverride (programmer error) (AF-9)', async () => {
+  const h = newHarness();
+  await assert.rejects(
+    () => h.handlers.startLogin({ email: 'a@b.com', subjectOverride: '' }),
+    /non-empty/,
+  );
+  await assert.rejects(
+    () => h.handlers.startLogin({ email: 'a@b.com', subjectOverride: 'x'.repeat(61) }),
+    /60/,
+  );
+  await assert.rejects(
+    () => h.handlers.startLogin({ email: 'a@b.com', subjectOverride: 'Café' }),
+    /ASCII/,
+  );
+  h.close();
+});
+
 test('startLogin: skips Origin check (server-side caller is trusted) (AF-7.3)', async () => {
   // No req object means no Origin header at all — startLogin doesn't
   // care because it's a programmatic API.

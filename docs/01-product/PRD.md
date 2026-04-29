@@ -2312,6 +2312,7 @@ is missing the defense.
 | AF-2.17 | `transportOverride` accepts malformed config silently | A bare options bag passed where a transport is expected constructs successfully but throws "sendMail is not a function" at first submission — possibly hours after startup. |
 | AF-2.18 | Secret used as ASCII bytes, not hex-decoded | `crypto.createHmac('sha256', secret)` was passed the 64-char hex string directly. Same 256-bit entropy, but a different HMAC output than systems that hex-decode first. Migration footgun: adopters with existing HMAC-keyed identifiers cannot interoperate. PRD already implied 32 bytes. Surfaced by addypin POC round 2. |
 | AF-2.19 | No operator-controllable footer on auth mail | Adopters with brand/legal/feedback text in their non-auth mail want the same footer on the magic-link email for consistency. Today they'd need to inject a custom mailer and call `composeBody` themselves, defeating the encapsulation. Surfaced by addypin POC round 2. |
+| AF-2.20 | Single factory subject for every magic-link mail | Any adopter that uses magic links for multiple intents (sign-in, action-confirmation, expiry warning, account-recovery) needs recognizable subjects per call. Today knowless sets one factory `subject` that applies uniformly — confirmation, login, and reminder mail are indistinguishable in the inbox. Surfaced by addypin POC round 3 (3 magic-link variants). |
 
 ### 17.3 Priority-ranked hardening backlog
 
@@ -2384,6 +2385,13 @@ Breaking change re: secret semantics, locked in before v1.0.
 - **AF-8.2:** `bodyFooter: string` config option for operator brand/
   legal text (closes AF-2.19). Strict validation: ASCII only, ≤240
   chars, ≤4 lines, no URLs. ✓
+
+**v0.1.7 — addypin integration round 3:**
+
+- **AF-9.1:** `subjectOverride` arg on `auth.startLogin` (closes
+  AF-2.20). Validated by the same rules as the factory subject;
+  applied identically to sham and real paths so subject can't leak
+  hit/miss outcome. SPEC §7.3a. ✓
 
 ### 17.4 Note on FR-6 timing test (AF-1.8)
 

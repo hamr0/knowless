@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { normalize, deriveHandle } from './handle.js';
 import { issueToken, hashToken } from './token.js';
 import { newSid, signSession, verifySessionSignature } from './session.js';
-import { composeBody } from './mailer.js';
+import { composeBody, validateSubject } from './mailer.js';
 import { renderLoginForm } from './form.js';
 import {
   buildTrustedPeers,
@@ -243,7 +243,7 @@ export function createHandlers({ store, mailer, config }) {
    *   handle is null only when the email failed to normalize (programmer
    *   bug for startLogin; same-shape silent for /login).
    */
-  async function runSendLink({ emailRaw, nextRaw, sourceIp }) {
+  async function runSendLink({ emailRaw, nextRaw, sourceIp, subject }) {
     // Step 1: parse + normalize
     let emailNorm;
     try {
@@ -322,8 +322,14 @@ export function createHandlers({ store, mailer, config }) {
       bodyFooter: cfg.bodyFooter,
     });
 
+    // AF-9: programmatic callers may override the subject per call
+    // (addypin sends confirmation / login / expiry-warning all via
+    // magic links and needs distinct subjects). Decision happens
+    // BEFORE the hit/miss branch — same subject for sham and real,
+    // so timing equivalence is preserved.
+    const effectiveSubject = subject ?? cfg.subject;
     try {
-      await mailer.submit({ to: toAddress, subject: cfg.subject, body: mailBody });
+      await mailer.submit({ to: toAddress, subject: effectiveSubject, body: mailBody });
     } catch (err) {
       // Per NFR-10: SMTP failure logged, NEVER leaked to response shape.
       console.error('[knowless] mail submit failed:', err.message);
@@ -393,7 +399,12 @@ export function createHandlers({ store, mailer, config }) {
     sameResponse(res, result.emailNorm, result.nextValidated ?? '');
   }
 
-  async function startLogin({ email, nextUrl, sourceIp = '' } = {}) {
+  async function startLogin({
+    email,
+    nextUrl,
+    sourceIp = '',
+    subjectOverride,
+  } = {}) {
     // Programmer-error guards (AF-7.3). These DO throw; they're not
     // silent-miss conditions, they're "you called the API wrong."
     if (typeof email !== 'string' || email.length === 0) {
@@ -405,10 +416,21 @@ export function createHandlers({ store, mailer, config }) {
     if (typeof sourceIp !== 'string') {
       throw new Error('startLogin: sourceIp must be a string when provided');
     }
+    // AF-9: per-call subject override. Validated with the same rules as
+    // the factory subject (ASCII, ≤60 chars, no CR/LF). Throws on
+    // invalid — same "programmer-error" treatment as other startLogin
+    // arg validation. Spam-trigger warnings are NOT thrown for; the
+    // caller has more context than knowless about what's appropriate.
+    let subject;
+    if (subjectOverride !== undefined && subjectOverride !== null) {
+      validateSubject(subjectOverride); // throws on invalid
+      subject = subjectOverride;
+    }
     const { handle } = await runSendLink({
       emailRaw: email,
       nextRaw: nextUrl ?? null,
       sourceIp,
+      subject,
     });
     // Same-shape return: rate-limit / sham / real all collapse here.
     // `handle` is the HMAC of the normalized email (or null if email

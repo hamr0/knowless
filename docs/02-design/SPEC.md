@@ -620,11 +620,24 @@ disposable resource" patterns.
 
 ```js
 const { handle, submitted } = await auth.startLogin({
-  email,        // required, normalized internally
-  nextUrl,      // optional; same whitelist as the form's `next`
-  sourceIp,     // optional; counted against per-IP rate limit
+  email,            // required, normalized internally
+  nextUrl,          // optional; same whitelist as the form's `next`
+  sourceIp,         // optional; counted against per-IP rate limit
+  subjectOverride,  // optional; replaces cfg.subject for this call only (AF-9)
 });
 ```
+
+**`subjectOverride` (AF-9).** Adopters who use magic links for
+multiple intents (login, action-confirmation, expiry warning,
+account-recovery) need recognizable subjects per intent. Override
+is validated by the same rules as the factory subject (ASCII,
+≤ 60 chars, no CR/LF) and throws on invalid — programmer error,
+not a silent miss. The subject is decided **before** the hit/miss
+branch, so sham and real submissions carry the same subject and
+no observer (including someone watching the operator's outbound
+mail queue) can distinguish outcomes by subject. Spam-trigger
+warnings (`!!`, `FREE`, etc.) do NOT throw; the caller has more
+context than knowless about what's appropriate.
 
 **Behavioural contract.**
 
