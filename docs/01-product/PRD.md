@@ -2301,6 +2301,11 @@ is missing the defense.
 | AF-2.6 | Sweeper failure has no alerting hook | If `sweepTokens` throws repeatedly, we log to stderr and continue. Tables grow silently. No metric, no alert. |
 | AF-2.7 | Cookie domain mismatch with request Host header | `verify` accepts a valid cookie value regardless of which Host the request claims. Reverse proxies typically prevent this in practice; not a vuln in deployment, but the library trusts. |
 | AF-2.8 | No programmatic `handleFromRequest(req)` API | The HTTP-shaped `verifyHandler` is awkward for in-process middleware. Library-mode adopters end up copying code or doing sub-request hacks. New finding from the first-customer (webrevival forum) scope review. |
+| AF-2.9 | No `revokeSessions(handle)` API | "Log out everywhere" without deleting the account is a common operator action (suspected compromise). `deleteHandle` is the only adjacent primitive but nukes the handle too. Surfaced by addypin spike. |
+| AF-2.10 | `POST /logout` had no Origin/Referer check | A cross-origin page could force-logout an authenticated victim. POST + SameSite=Lax doesn't cover same-eTLD+1 attacker subdomains. Surfaced by addypin spike audit. |
+| AF-2.11 | `confirmationMessage` rendered as raw HTML | Operator-config string interpolated unescaped; if the operator naively passed user-controlled data through it, reflected XSS. Footgun, not direct vuln. Surfaced by addypin spike. |
+| AF-2.12 | `trustedProxies` accepted only exact IPs | k8s/docker/cgnat deployments can't enumerate every peer IP. CIDR support needed. Surfaced by addypin spike. |
+| AF-2.13 | No SMTP-down dev fallback | Local development without a real Postfix has no way to obtain the magic link. Operators end up stubbing the mailer. Surfaced by addypin spike. |
 
 ### 17.3 Priority-ranked hardening backlog
 
@@ -2333,24 +2338,13 @@ Real-world integration findings from the addypin team's spike on
 v0.1.3. Two were genuine bugs (AF-6.4, AF-6.5); the rest are
 ergonomics that surfaced once a real client tried to integrate.
 
-- **AF-6.1:** `auth.revokeSessions(handle)` — log out everywhere
-  without deleting the account. Table-stakes API gap. ✓
-- **AF-6.2:** `devLogMagicLinks` opt-in — print the magic link to
-  stderr when SMTP fails AND the operator has opted in. Real DX
-  win for local development. Sham submissions never logged. ✓
-- **AF-6.3:** CIDR support in `trustedProxies` — accept `10.0.0.0/8`
-  in addition to plain IPs, for k8s/docker/cgnat deployments. ✓
-- **AF-6.4:** **Bug.** `POST /logout` had no Origin/Referer check;
-  cross-origin force-logout was possible. Now mirrors `POST /login`'s
-  Origin validation (AF-4.3). SPEC §10.2 updated. ✓
-- **AF-6.5:** **Footgun.** `confirmationMessage` was interpolated
-  raw into rendered HTML — operator-supplied text, but defense in
-  depth: now HTML-escaped before `{email}` substitution. ✓
-- **AF-6.6:** SPEC §7.3 Step 0 updated with explicit "do NOT add a
-  CSRF token upstream — Origin check is the defense" guidance.
-  Closes a recurring integration-time question. ✓
-- **AF-6.7:** GUIDE front-matter now leads with the v1.0.0
-  walks-away commitment (procurement signal). ✓
+- **AF-6.1:** `auth.revokeSessions(handle)` (closes AF-2.9). ✓
+- **AF-6.2:** `devLogMagicLinks` opt-in (closes AF-2.13). ✓
+- **AF-6.3:** CIDR support in `trustedProxies` (closes AF-2.12). ✓
+- **AF-6.4:** `POST /logout` Origin validation (closes AF-2.10). ✓
+- **AF-6.5:** `confirmationMessage` HTML-escaped (closes AF-2.11). ✓
+- **AF-6.6:** SPEC §7.3 Step 0 "no CSRF token upstream" guidance. ✓
+- **AF-6.7:** GUIDE front-matter — v1.0.0 walks-away commitment. ✓
 
 ### 17.4 Note on FR-6 timing test (AF-1.8)
 

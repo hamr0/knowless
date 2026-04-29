@@ -76,6 +76,7 @@ const auth = knowless({
   // --- Cookie / session ---
   cookieDomain: 'app.example.com',    // default: hostname of baseUrl
   cookieName: 'knowless_session',     // default 'knowless_session'
+  cookieSecure: true,                 // default true; "false" only for localhost dev
   sessionTtlSeconds: 30 * 86400,      // 30 days
 
   // --- Token ---
@@ -97,17 +98,27 @@ const auth = knowless({
   // --- Behavior ---
   openRegistration: false,            // first-email-wins handle creation
   includeLastLoginInEmail: true,      // append "Last sign-in: <ISO ts>" line
-  confirmationMessage: 'Thanks. If <strong>{email}</strong>...',
+  confirmationMessage: 'Thanks. If {email} is registered, a link is on its way.',
+  // ^ NOTE: the message is HTML-escaped before render (AF-6.5).
+  //         {email} placeholder still works. For HTML, pre-render upstream.
 
   // --- Abuse defenses (FR-38..41) ---
   maxActiveTokensPerHandle: 5,        // 0 to disable
   maxLoginRequestsPerIpPerHour: 30,   // 0 to disable
   maxNewHandlesPerIpPerHour: 3,       // 0 to disable (open-reg only)
   honeypotFieldName: 'website',
-  trustedProxies: ['127.0.0.1', '::1'],
+  // Plain IPs and/or CIDR ranges (AF-6.3). Useful for k8s/docker/cgnat.
+  trustedProxies: ['127.0.0.1', '::1', '10.0.0.0/8'],
 
   // --- Lifecycle ---
   sweepIntervalMs: 5 * 60 * 1000,     // periodic sweeper tick
+  onSweepError: (err) => { /* alerting hook; errors are swallowed */ },
+
+  // --- Dev mode (AF-6.2) ---
+  // When SMTP submission fails AND this flag is true, the magic link
+  // is printed to stderr so a developer can click through. Off by
+  // default. Never fires for sham (silent-miss) submissions.
+  devLogMagicLinks: false,
 
   // --- Injection (tests / advanced) ---
   store: undefined,                   // bring your own store
@@ -127,7 +138,10 @@ const auth = knowless({
 | `verify` | (req, res) | void | GET handler (forward-auth): 200+`X-User-Handle` if cookie valid, else 401 |
 | `logout` | (req, res) | Promise\<void\> | POST handler: clears session row + cookie |
 | `loginForm` | (req, res) | void | GET handler: renders the hardcoded login HTML; preserves `?next=` |
+| `handleFromRequest` | (req) | string \| null | Programmatic session resolver for in-process middleware. Returns the handle if the cookie is valid, else null. SPEC §9.4. |
 | `deleteHandle` | (handle: string) | void | Atomic delete of handle + tokens + sessions (FR-37a, GDPR) |
+| `revokeSessions` | (handle: string) | number | Drops every session for `handle` without deleting the account ("log out everywhere"). Returns rows removed. AF-6.1. |
+| `_sweep` | -- | void | Trigger one sweep tick on demand (tests, operator scripts). AF-5.3. |
 | `config` | -- | object | Merged effective config; safe to read (do not mutate) |
 | `close` | -- | void | Stops sweeper, closes mailer + store. Call on shutdown. |
 
@@ -372,11 +386,10 @@ rate-limits) belongs above the library.
    The library does NOT compute eTLD+1 automatically (would
    require a public-suffix-list dep).
 
-5. **`Secure` cookie attribute is non-negotiable.** All session
-   cookies set `Secure`. HTTP-only origins won't receive them.
-   Use HTTPS in production. Localhost development: use
-   `--insecure-localhost-cookies` (not implemented yet — TASKS
-   open question; works in Chrome with `--unsafely-treat-insecure-origin-as-secure`).
+5. **`Secure` cookie attribute toggles via `cookieSecure`.** Default
+   is `true`. Set `cookieSecure: false` ONLY for `http://localhost`
+   development; the library logs a stderr warning at startup (AF-4.4).
+   Production deployments MUST use HTTPS and leave `cookieSecure: true`.
 
 6. **Forward-auth needs the parent-domain cookie.** If your auth
    subdomain is `auth.example.com` and protected service is
@@ -409,6 +422,24 @@ rate-limits) belongs above the library.
     process won't exit cleanly. The sweeper timer is `unref()`d
     so it won't *prevent* exit, but the SQLite handle held by
     `better-sqlite3` will leave a finalizer warning.
+
+12. **CSRF defense is the Origin/Referer whitelist, not a token.**
+    Modern browsers always emit `Origin` on cross-origin POSTs;
+    knowless validates host against `cookieDomain` on POST /login
+    AND POST /logout. Browser-absent (curl / programmatic) is
+    allowed. **Do NOT add a CSRF token upstream** — the Origin
+    check is the defense. SPEC §7.3 Step 0.
+
+13. **`confirmationMessage` is plain text + `{email}` placeholder.**
+    The whole message is HTML-escaped before render (AF-6.5). If
+    you want bold/italic/links in the confirmation copy, pre-render
+    the HTML upstream and pass the escaped string — but understand
+    you're then responsible for not interpolating user data.
+
+14. **`devLogMagicLinks` is opt-in and dev-only.** When set true
+    AND SMTP submission fails, the magic link is printed to stderr.
+    On successful SMTP submission, nothing is logged. Sham
+    (silent-miss) submissions never log. Don't enable in production.
 
 ## Constraints
 

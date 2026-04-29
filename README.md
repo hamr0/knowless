@@ -7,7 +7,7 @@ that don't need to email their users for anything but the sign-in link.
 npm install knowless
 ```
 
-> v0.1.0 | Node.js >= 20 | 2 deps (nodemailer, better-sqlite3) | Apache-2.0
+> v0.1.4 | Node.js >= 20 | 2 deps (nodemailer, better-sqlite3) | Apache-2.0
 
 ## What this is
 
@@ -83,12 +83,12 @@ A short list (full table in [`docs/01-product/PRD.md`](docs/01-product/PRD.md) �
 
 | Mode | Status | When |
 |---|---|---|
-| **Library mode** | v0.1.0 | Mount handlers in your existing Node app |
-| **Standalone server** (forward-auth) | v0.2.0 | Self-hosters gating Uptime Kuma / AdGuard / Pi-hole / Sonarr / etc. via Caddy or nginx |
+| **Library mode** | shipped (v0.1.0) | Mount handlers in your existing Node app |
+| **Standalone server** (forward-auth) | shipped (v0.1.3) | Self-hosters gating Uptime Kuma / AdGuard / Pi-hole / Sonarr / etc. via Caddy or nginx |
 
-This release ships library mode. Standalone server (`bin/knowless-server`)
-follows in 0.2.0 — see [`docs/03-tasks/TASKS.md`](docs/03-tasks/TASKS.md)
-Phase 6 for scope.
+Library mode is the six-line example above. Standalone server is
+`npx knowless-server` — see [`OPS.md`](OPS.md) for the full Postfix +
+DNS + reverse-proxy walkthrough.
 
 ## Operator commitments
 
