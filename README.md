@@ -104,16 +104,18 @@ By choosing knowless, you commit to:
   silent-miss sham mail is dropped, not delivered to NXDOMAIN
 - Accepting that this is the **only email** your service ever sends
 
-These are documented in `OPS.md` (forthcoming with 0.2.0). Until
-then, see `GUIDE.md` for the high-level path and the
-[Postfix outbound-only setup guide](https://www.postfix.org/STANDARD_CONFIGURATION_README.html#stand_alone)
-upstream.
+These are documented in [`OPS.md`](OPS.md): Postfix install,
+null-route, SPF/DKIM/PTR, systemd unit, Caddy / nginx / Traefik
+forward-auth examples, Tailscale pattern, reverse-proxy rate limiting,
+and fail2ban / Turnstile references.
 
 ## Documentation
 
 - [`README.md`](README.md) (this file) — project pitch, six-line example
 - [`GUIDE.md`](GUIDE.md) — adopter walkthrough: who it's for, who it
   isn't, how to integrate, configuration reference, FAQ
+- [`OPS.md`](OPS.md) — operator setup: Postfix, null-route, DNS,
+  systemd, reverse-proxy forward-auth examples
 - [`knowless.context.md`](knowless.context.md) — dense AI-agent
   integration guide (tables, gotchas, public API at a glance)
 - [`docs/01-product/PRD.md`](docs/01-product/PRD.md) — product

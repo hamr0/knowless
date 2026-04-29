@@ -1,6 +1,6 @@
 {
   "name": "knowless",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Small, opinionated, full-stack passwordless auth for Node.js services that don't need to email their users for anything but the sign-in link.",
   "type": "module",
   "main": "./src/index.js",
@@ -19,6 +19,7 @@
     "README.md",
     "CHANGELOG.md",
     "GUIDE.md",
+    "OPS.md",
     "knowless.context.md"
   ],
   "engines": {

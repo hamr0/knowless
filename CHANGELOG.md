@@ -7,6 +7,15 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+- Caddy forward-auth Docker integration test (TASKS.md 6.8).
+
+## [0.1.3] — 2026-04-28
+
+Standalone-deployment release. The library could already be embedded
+in a Node service since v0.1.0; v0.1.3 closes the operator-side story
+so a self-hoster can `npx knowless-server` and have a working
+forward-auth gate in front of arbitrary services.
+
 ### Added
 
 - **Standalone server** — `bin/knowless-server` ships a self-contained
@@ -25,13 +34,12 @@ Versioning is [SemVer](https://semver.org/).
   `EnvironmentFile=`. Library does not auto-load it (FR-56).
 - Startup log block (FR-54) with effective config, SMTP check result,
   and listening address.
-
-### Pending
-
-- `OPS.md`: full operator setup walkthrough (Postfix, null-route for
-  sham mail, SPF/DKIM/PTR, reverse-proxy configs for Caddy / nginx /
-  Traefik). (Tracked in TASKS.md Phase 7.)
-- Caddy forward-auth Docker integration test (TASKS.md 6.8).
+- **`OPS.md`** — full operator setup walkthrough: Postfix
+  outbound-only install, **required** null-route for sham mail,
+  SPF / DKIM / PTR / DMARC, port-25 verification, hardened systemd
+  unit, Caddy / nginx / Traefik forward-auth examples, Tailscale
+  pattern, reverse-proxy rate limiting, fail2ban / Turnstile
+  references, backup guidance.
 
 ## [0.1.2] — 2026-04-28
 

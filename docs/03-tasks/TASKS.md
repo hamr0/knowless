@@ -344,7 +344,7 @@ are documented, the package is on npm.
       command, the operator-commitment paragraph (Postfix,
       DKIM, SPF, PTR), the §14 NO-GO summary, link to PRD and
       SPEC for depth.
-- [ ] 7.2 — `OPS.md` per PRD §11.2:
+- [x] 7.2 — `OPS.md` per PRD §11.2:
       - Postfix install + minimal outbound-only config
       - **null-route setup** for sham mail (`transport_maps`
         entry for `knowless.invalid → discard:`) — required
