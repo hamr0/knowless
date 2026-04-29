@@ -39,6 +39,38 @@ test('knowless: throws on short secret', () => {
   );
 });
 
+test('knowless: throws on non-hex secret (AF-8.1)', () => {
+  assert.throws(
+    () => knowless({ secret: 'z'.repeat(64), baseUrl: 'https://x.com', from: 'a@x.com' }),
+    /hex/,
+  );
+});
+
+test('knowless: throws on bad bodyFooter at startup (AF-8.2)', () => {
+  // Wrong type
+  assert.throws(
+    () =>
+      knowless({
+        secret: SECRET,
+        baseUrl: 'https://x.com',
+        from: 'a@x.com',
+        bodyFooter: 123,
+      }),
+    /string/,
+  );
+  // URL inside footer is the most-likely real-world bug
+  assert.throws(
+    () =>
+      knowless({
+        secret: SECRET,
+        baseUrl: 'https://x.com',
+        from: 'a@x.com',
+        bodyFooter: 'see https://app.example.com/privacy',
+      }),
+    /URLs/,
+  );
+});
+
 test('knowless: throws on missing baseUrl', () => {
   assert.throws(() => knowless({ secret: SECRET, from: 'a@x.com' }));
 });

@@ -75,15 +75,39 @@ test('deriveHandle: same normalized email from different surface forms gives sam
   assert.equal(a, b);
 });
 
-test('deriveHandle: known vector pins HMAC-SHA256 (closes AF-1.1)', () => {
-  // Vector computed externally:
-  //   $ node -e "console.log(crypto.createHmac('sha256', 'a'.repeat(64)) \\
-  //              .update('alice@example.com').digest('hex'))"
-  // A broken impl (different algorithm, different encoding, missing key,
-  // SHA-1 instead of SHA-256, no HMAC at all) would fail this assertion
-  // even if all the determinism tests above still pass.
+test('deriveHandle: rejects non-hex secret (AF-8.1)', () => {
+  // 64 chars but not hex
+  assert.throws(() => deriveHandle('alice@example.com', 'z'.repeat(64)), /hex/);
+  assert.throws(() => deriveHandle('alice@example.com', 'a'.repeat(63)), /hex/);
+  // Empty / non-string
+  assert.throws(() => deriveHandle('alice@example.com', ''), /hex|secret/);
+  assert.throws(() => deriveHandle('alice@example.com', null), /required|hex|secret/);
+});
+
+test('deriveHandle: accepts a Buffer secret as raw bytes (AF-8.1)', () => {
+  // Buffers are taken verbatim — used by adopters who already have
+  // raw-byte secrets and don't want a string round-trip.
+  const raw = Buffer.alloc(32, 0xaa); // == hex-decoded 'a'.repeat(64)
+  assert.equal(
+    deriveHandle('alice@example.com', raw),
+    deriveHandle('alice@example.com', 'a'.repeat(64)),
+  );
+});
+
+test('deriveHandle: known vector pins HMAC-SHA256 over hex-decoded key (AF-1.1, AF-8.1)', () => {
+  // The secret is supplied as 64-char hex and hex-decoded to 32 raw
+  // bytes before HMAC (AF-8.1). Vector computed externally:
+  //   $ node -e "
+  //       const c = require('node:crypto');
+  //       const key = Buffer.from('a'.repeat(64), 'hex'); // 32 bytes of 0xaa
+  //       console.log(c.createHmac('sha256', key)
+  //           .update('alice@example.com').digest('hex'));
+  //     "
+  // A broken impl (different algorithm, missing key, SHA-1 instead of
+  // SHA-256, no HMAC, OR the pre-AF-8.1 ASCII-keyed HMAC) would fail
+  // this assertion even if all the determinism tests above still pass.
   assert.equal(
     deriveHandle('alice@example.com', 'a'.repeat(64)),
-    '5b32f1b41887a522ebbae17345eb5721fd2cd49da979576670f09417d79bcc82',
+    'cf643d958863c5b5652e938f180d06583dd98711e08400ce058b49f8ab20902b',
   );
 });

@@ -8,6 +8,62 @@ Versioning is [SemVer](https://semver.org/).
 ## [Unreleased]
 
 - Caddy forward-auth Docker integration test (TASKS.md 6.8).
+
+## [0.1.6] — 2026-04-28
+
+addypin integration round 2 — one correctness fix (HMAC key handling)
+and one common-want feature (operator footer on auth mail).
+
+### Breaking
+
+- **The `secret` is now hex-decoded before being used as the HMAC
+  key.** Prior versions passed the 64-char hex string to
+  `crypto.createHmac` as ASCII bytes — same 256 bits of entropy, but
+  a different HMAC output than systems that hex-decode first. The
+  PRD already implied 32 bytes ("≥64 hex chars (32 bytes)"); the
+  implementation matched the spec on key length but used the wrong
+  key bytes. **Effect:** every handle and session signature changes
+  on upgrade. Existing sessions invalidate (users re-login); existing
+  pre-seeded handles must be re-derived. There are no production
+  knowless deployments yet (addypin and webrevival are both pre-prod),
+  so we lock the correct semantics in before v1.0 freezes. Closes
+  AF-8.1.
+- The startup secret check now also validates that the secret is
+  64-char lowercase hex (`/^[a-f0-9]{64,}$/i`). Mixed-case secrets
+  must be lowercased.
+- `deriveHandle()` and `signSession()` accept `Buffer` directly for
+  adopters who already hold raw 32-byte keys.
+
+### Added
+
+- **`bodyFooter: string`** config option — append a constant operator
+  footer to every magic-link email after the standard `"-- "` (RFC
+  3676) signature delimiter. Constraints (deliberately strict to
+  preserve the URL-line invariant and 7bit body encoding):
+  - ASCII only (no unicode middle-dot — use `|` or `-`)
+  - ≤ 240 chars, ≤ 4 lines
+  - No CR
+  - No `http://` / `https://` substrings (would conflict with the
+    magic-link line and trigger MTA URL-rewriting heuristics)
+  Validated at factory startup; fails fast on misconfiguration.
+  Closes AF-8.2.
+- `validateBodyFooter()` exported alongside `composeBody` for adopters
+  who want to validate operator-supplied footers themselves.
+- `secretBytes()` exported from `./handle.js` (and via the package
+  root) for adopters who want to coerce a hex string to raw 32-byte
+  HMAC key on their own boundaries.
+
+### Migration from 0.1.5
+
+- **Pre-seeded handles must be re-derived.** `deriveHandle('alice@x',
+  SECRET)` returns a different value in 0.1.6. If you stored handles
+  in any external system, recompute them. Closed-registration users
+  must re-seed.
+- **Active sessions invalidate.** Users will need to log in again
+  after the upgrade. Plan for a single-shot user-visible logout.
+- **Magic links in flight at upgrade time** become invalid (token
+  hashes are stored as HMAC outputs and the key changes). 15 min
+  TTL by default; a brief read-only window during deploy is enough.
 - `knowless-server --check-null-route`: CLI probe that submits a
   test message to `shamRecipient` and confirms the local MTA
   discarded it. Honest answer to "does the operator's null-route

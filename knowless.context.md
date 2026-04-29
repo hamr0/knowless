@@ -102,6 +102,12 @@ const auth = knowless({
   // ^ NOTE: the message is HTML-escaped before render (AF-6.5).
   //         {email} placeholder still works. For HTML, pre-render upstream.
 
+  // Operator footer on magic-link mail (AF-8.2). ASCII-only, ≤240
+  // chars, ≤4 lines, NO URLs (would conflict with the magic-link line).
+  // Validated at factory startup. Use | or - as separators (NOT · which
+  // is non-ASCII).
+  bodyFooter: 'feedback@example.com | privacy first',
+
   // --- Abuse defenses (FR-38..41) ---
   maxActiveTokensPerHandle: 5,        // 0 to disable
   maxLoginRequestsPerIpPerHour: 30,   // 0 to disable
@@ -157,9 +163,11 @@ import {
   createHandlers,   // bring your own factory wiring
   composeBody,      // pure: build the mail body
   validateSubject,  // pure: validate operator-supplied subject
+  validateBodyFooter, // pure: validate operator-supplied footer (AF-8.2)
   renderLoginForm,  // pure: HTML5 page rendering
   normalize,        // pure: email normalization
-  deriveHandle,     // pure: HMAC-SHA256(secret, email)
+  deriveHandle,     // pure: HMAC-SHA256(hex-decoded secret, email)
+  secretBytes,      // pure: coerce hex string → 32-byte HMAC key
 } from 'knowless';
 ```
 
@@ -458,6 +466,19 @@ rate-limits) belongs above the library.
     "drop a pin, claim by email click" patterns. Both run the
     identical 12-step sham-work flow; same FR-6 guarantee. Pick
     per-action, not per-app.
+
+17. **Secret is hex-decoded (AF-8.1, since v0.1.6).** Pass a
+    64-char lowercase hex string; knowless decodes to 32 raw bytes
+    before HMAC. If you're upgrading from 0.1.5 or earlier, all
+    handles and session signatures change — re-seed handles, expect
+    one user-visible logout. `Buffer` accepted directly for adopters
+    who hold raw 32-byte keys.
+
+18. **`bodyFooter` constraints (AF-8.2).** ASCII only — `·` is NOT
+    ASCII, use `|` or `-`. ≤ 240 chars, ≤ 4 lines, no `http(s)://`
+    URLs (would conflict with the magic-link line). Validated at
+    factory startup; fails fast. Goes after RFC 3676 `"-- "`
+    delimiter so mail clients strip it from quoted replies.
 
 ## Constraints
 

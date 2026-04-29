@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { secretBytes } from './handle.js';
 
 /**
  * Domain-separation tag for session signatures. See SPEC §3.4 / §5.2.
@@ -22,7 +23,7 @@ export function newSid() {
  */
 function signature(sidB64u, secret) {
   return crypto
-    .createHmac('sha256', secret)
+    .createHmac('sha256', secretBytes(secret))
     .update(SESS_TAG)
     .update(sidB64u, 'utf8')
     .digest('hex');
@@ -39,9 +40,6 @@ function signature(sidB64u, secret) {
 export function signSession(sidB64u, secret) {
   if (typeof sidB64u !== 'string' || !/^[A-Za-z0-9_-]+$/.test(sidB64u)) {
     throw new Error('invalid sid');
-  }
-  if (!secret || (typeof secret !== 'string' && !Buffer.isBuffer(secret))) {
-    throw new Error('secret required');
   }
   return `${sidB64u}.${signature(sidB64u, secret)}`;
 }

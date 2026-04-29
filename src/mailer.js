@@ -53,6 +53,39 @@ function composeRaw({ from, to, subject, body }) {
 }
 
 /**
+ * Validate an operator-supplied body footer per AF-8.2.
+ *
+ * Constraints (deliberately strict to preserve the URL-line invariant
+ * and 7bit body encoding from the v0.11 POC finding):
+ *   - ASCII only
+ *   - ≤ 240 chars
+ *   - No CR (LF allowed; line count ≤ 4)
+ *   - No `http://` / `https://` substring (avoids URL-line confusion
+ *     and avoids triggering MTA URL-rewriting heuristics)
+ *
+ * Throws on any violation. Returns the (already-trimmed) footer.
+ *
+ * @param {unknown} footer
+ * @returns {string|null}
+ */
+export function validateBodyFooter(footer) {
+  if (footer == null || footer === '') return null;
+  if (typeof footer !== 'string') {
+    throw new Error('bodyFooter must be a string');
+  }
+  if (footer.length > 240) throw new Error('bodyFooter must be ≤ 240 chars');
+  if (!ASCII_RE.test(footer)) throw new Error('bodyFooter must be ASCII');
+  if (footer.includes('\r')) throw new Error('bodyFooter must not contain CR');
+  if (footer.split('\n').length > 4) {
+    throw new Error('bodyFooter must be ≤ 4 lines');
+  }
+  if (/https?:\/\//i.test(footer)) {
+    throw new Error('bodyFooter must not contain URLs (would conflict with the magic-link line)');
+  }
+  return footer;
+}
+
+/**
  * Compose the plain-text body of the magic-link email per SPEC §12.2.
  *
  * Body shape (default):
@@ -68,6 +101,11 @@ function composeRaw({ from, to, subject, body }) {
  *   Last sign-in: <ISO 8601 UTC timestamp>.
  *   If that wasn't you, do not click the link above.
  *
+ * Plus, when bodyFooter is provided (AF-8.2):
+ *
+ *   --
+ *   <footer text>
+ *
  * The URL appears on its own line. Body is ASCII-only.
  *
  * @param {object} args
@@ -75,9 +113,10 @@ function composeRaw({ from, to, subject, body }) {
  * @param {string} args.baseUrl   e.g. 'https://app.example.com'
  * @param {string} args.linkPath  e.g. '/auth/callback'
  * @param {number|null} [args.lastLoginAt] Unix ms; null/undefined to omit
+ * @param {string|null} [args.bodyFooter] operator footer; pre-validated
  * @returns {string} the body text (ASCII)
  */
-export function composeBody({ tokenRaw, baseUrl, linkPath, lastLoginAt }) {
+export function composeBody({ tokenRaw, baseUrl, linkPath, lastLoginAt, bodyFooter }) {
   const url = `${baseUrl}${linkPath}?t=${tokenRaw}`;
   let body =
     'Click to sign in:\n\n' +
@@ -88,6 +127,11 @@ export function composeBody({ tokenRaw, baseUrl, linkPath, lastLoginAt }) {
     const iso = new Date(lastLoginAt).toISOString();
     body +=
       `\nLast sign-in: ${iso}.\n` + 'If that wasn\'t you, do not click the link above.\n';
+  }
+  if (bodyFooter) {
+    // Standard email signature delimiter: "-- " (dash-dash-space) on
+    // its own line. Mail clients strip this section from quoted replies.
+    body += `\n-- \n${bodyFooter}\n`;
   }
   if (!ASCII_RE.test(body)) {
     throw new Error('mail body contains non-ASCII');

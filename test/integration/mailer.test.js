@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import nodemailer from 'nodemailer';
-import { createMailer, composeBody, validateSubject } from '../../src/mailer.js';
+import { createMailer, composeBody, validateSubject, validateBodyFooter } from '../../src/mailer.js';
 
 const captureTransport = () =>
   nodemailer.createTransport({ streamTransport: true, buffer: true });
@@ -165,4 +165,87 @@ test('mailer: rejects CR/LF in to/from/subject — header-injection defense (clo
     /header injection/,
   );
   mailer.close();
+});
+
+// --- AF-8.2: bodyFooter ---
+
+test('validateBodyFooter: null/empty/undefined → null', () => {
+  assert.equal(validateBodyFooter(null), null);
+  assert.equal(validateBodyFooter(undefined), null);
+  assert.equal(validateBodyFooter(''), null);
+});
+
+test('validateBodyFooter: accepts a normal ASCII single-line footer (AF-8.2)', () => {
+  const f = 'feedback@addypin.com | we do not keep your email';
+  assert.equal(validateBodyFooter(f), f);
+});
+
+test('validateBodyFooter: rejects non-string', () => {
+  assert.throws(() => validateBodyFooter(123), /string/);
+});
+
+test('validateBodyFooter: rejects > 240 chars', () => {
+  assert.throws(() => validateBodyFooter('a'.repeat(241)), /240/);
+});
+
+test('validateBodyFooter: rejects non-ASCII (the · gotcha)', () => {
+  // Unicode middle-dot is a common separator choice but it would
+  // force 8bit encoding; reject and have adopters use | or - instead.
+  assert.throws(() => validateBodyFooter('feedback@x.com · privacy'), /ASCII/);
+});
+
+test('validateBodyFooter: rejects CR', () => {
+  assert.throws(() => validateBodyFooter('line1\r\nline2'), /CR/);
+});
+
+test('validateBodyFooter: rejects > 4 lines', () => {
+  assert.throws(() => validateBodyFooter('1\n2\n3\n4\n5'), /4 lines/);
+});
+
+test('validateBodyFooter: rejects URL substrings', () => {
+  assert.throws(
+    () => validateBodyFooter('see https://addypin.com/privacy'),
+    /URLs/,
+  );
+  assert.throws(() => validateBodyFooter('http://x'), /URLs/);
+});
+
+test('composeBody: appends bodyFooter after a "-- " sig delimiter (AF-8.2)', () => {
+  const footer = 'feedback@addypin.com | privacy first';
+  const body = composeBody({
+    tokenRaw: RAW_TOKEN,
+    baseUrl: BASE,
+    linkPath: PATH,
+    bodyFooter: footer,
+  });
+  // Standard signature delimiter: "-- " on its own line, then footer.
+  assert.match(body, /\n-- \nfeedback@addypin\.com \| privacy first\n$/);
+  // URL line is still bracketed by blank lines (URL-line invariant
+  // preserved).
+  const lines = body.split('\n');
+  const urlIdx = lines.findIndex((l) => l.startsWith('https://'));
+  assert.equal(lines[urlIdx - 1], '');
+  assert.equal(lines[urlIdx + 1], '');
+});
+
+test('composeBody: bodyFooter null/undefined → no footer block (AF-8.2)', () => {
+  const body = composeBody({
+    tokenRaw: RAW_TOKEN,
+    baseUrl: BASE,
+    linkPath: PATH,
+  });
+  assert.equal(body.includes('-- '), false);
+});
+
+test('composeBody: lastLoginAt + bodyFooter both render in order (AF-8.2)', () => {
+  const body = composeBody({
+    tokenRaw: RAW_TOKEN,
+    baseUrl: BASE,
+    linkPath: PATH,
+    lastLoginAt: Date.UTC(2026, 3, 28),
+    bodyFooter: 'team@x.com',
+  });
+  const lastIdx = body.indexOf('Last sign-in');
+  const sigIdx = body.indexOf('-- ');
+  assert.ok(lastIdx > 0 && sigIdx > lastIdx);
 });

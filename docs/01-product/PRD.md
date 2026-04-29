@@ -2310,6 +2310,8 @@ is missing the defense.
 | AF-2.15 | No `auth.deriveHandle` instance method | Adopters needing the handle outside HTTP context import the helper directly and pass the secret manually, spreading secret-handling surface. Surfaced by addypin POC. |
 | AF-2.16 | Pre-parsed body silently null-routes /login | On non-Express stacks, any body-reader middleware in front of `auth.login` consumes the stream; knowless sees empty body, falls through to sham. No diagnostic. Cost the addypin POC ~30min. |
 | AF-2.17 | `transportOverride` accepts malformed config silently | A bare options bag passed where a transport is expected constructs successfully but throws "sendMail is not a function" at first submission — possibly hours after startup. |
+| AF-2.18 | Secret used as ASCII bytes, not hex-decoded | `crypto.createHmac('sha256', secret)` was passed the 64-char hex string directly. Same 256-bit entropy, but a different HMAC output than systems that hex-decode first. Migration footgun: adopters with existing HMAC-keyed identifiers cannot interoperate. PRD already implied 32 bytes. Surfaced by addypin POC round 2. |
+| AF-2.19 | No operator-controllable footer on auth mail | Adopters with brand/legal/feedback text in their non-auth mail want the same footer on the magic-link email for consistency. Today they'd need to inject a custom mailer and call `composeBody` themselves, defeating the encapsulation. Surfaced by addypin POC round 2. |
 
 ### 17.3 Priority-ranked hardening backlog
 
@@ -2370,6 +2372,18 @@ closes them; addypin pins to it.
 - **AF-7.6:** `devLogMagicLinks` line tagged with `cfg.from` for
   multi-instance disambiguation. ✓
 - **AF-7.7:** GUIDE "Constraints / install footprint" section. ✓
+
+**v0.1.6 — addypin integration round 2:**
+
+One correctness fix and one feature; both small, both adopter-driven.
+Breaking change re: secret semantics, locked in before v1.0.
+
+- **AF-8.1:** Hex-decode `secret` before HMAC (closes AF-2.18).
+  Breaking: handle and session-signature outputs change. No prod
+  users yet — done now to avoid carrying the bug into v1.0. ✓
+- **AF-8.2:** `bodyFooter: string` config option for operator brand/
+  legal text (closes AF-2.19). Strict validation: ASCII only, ≤240
+  chars, ≤4 lines, no URLs. ✓
 
 ### 17.4 Note on FR-6 timing test (AF-1.8)
 

@@ -27,6 +27,28 @@ export function normalize(input) {
 }
 
 /**
+ * Coerce an operator-supplied secret to the raw bytes used as HMAC key.
+ *
+ * AF-8.1: knowless requires `secret` to be a 64-char lowercase hex
+ * string (32 bytes). Prior versions passed it to `createHmac` as an
+ * ASCII string — same 256 bits of entropy, but a different HMAC
+ * output than systems that hex-decode first. That meant adopters
+ * with existing HMAC-keyed identifiers couldn't interoperate. The
+ * fix is to hex-decode at the boundary so HMAC uses 32 raw bytes.
+ *
+ * @param {Buffer|string} secret
+ * @returns {Buffer} 32 raw bytes
+ */
+export function secretBytes(secret) {
+  if (Buffer.isBuffer(secret)) return secret;
+  if (typeof secret !== 'string') throw new Error('secret required');
+  if (!/^[a-f0-9]{64,}$/i.test(secret)) {
+    throw new Error('secret must be ≥64 hex chars (lowercase a-f, 0-9)');
+  }
+  return Buffer.from(secret, 'hex');
+}
+
+/**
  * Derive the opaque handle for a normalized email using the operator secret.
  * HMAC-SHA256, lowercase hex output, 64 chars. See SPEC §3.
  *
@@ -34,18 +56,15 @@ export function normalize(input) {
  * HMAC use of `secret` MUST add a tag prefix (see SPEC §3.4).
  *
  * @param {string} emailNormalized output of normalize()
- * @param {Buffer|string} secret operator HMAC secret
+ * @param {Buffer|string} secret operator HMAC secret (32+ raw bytes or ≥64 hex chars)
  * @returns {string} 64-char lowercase hex handle
  */
 export function deriveHandle(emailNormalized, secret) {
   if (typeof emailNormalized !== 'string' || emailNormalized.length === 0) {
     throw new Error('emailNormalized required');
   }
-  if (!secret || (typeof secret !== 'string' && !Buffer.isBuffer(secret))) {
-    throw new Error('secret required');
-  }
   return crypto
-    .createHmac('sha256', secret)
+    .createHmac('sha256', secretBytes(secret))
     .update(emailNormalized, 'utf8')
     .digest('hex');
 }

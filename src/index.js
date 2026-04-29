@@ -1,5 +1,5 @@
 import { createStore } from './store.js';
-import { createMailer } from './mailer.js';
+import { createMailer, validateBodyFooter } from './mailer.js';
 import { createHandlers } from './handlers.js';
 import { deriveHandle as deriveHandleRaw } from './handle.js';
 
@@ -73,8 +73,12 @@ export function knowless(options = {}) {
   for (const f of REQUIRED_FIELDS) {
     if (!options[f]) throw new Error(`knowless: ${f} is required`);
   }
-  if (typeof options.secret !== 'string' || options.secret.length < 64) {
-    throw new Error('knowless: secret must be at least 64 hex chars (32 bytes)');
+  if (typeof options.secret !== 'string' || !/^[a-f0-9]{64,}$/i.test(options.secret)) {
+    throw new Error('knowless: secret must be at least 64 hex chars (32 bytes, lowercase a-f, 0-9)');
+  }
+  // Validate operator-supplied body footer at startup (AF-8.2).
+  if (options.bodyFooter !== undefined && options.bodyFooter !== null) {
+    validateBodyFooter(options.bodyFooter);
   }
 
   // SPEC §5.4: cookieSecure: false is allowed only for localhost dev.
@@ -169,7 +173,7 @@ export function knowless(options = {}) {
 }
 
 export { createStore } from './store.js';
-export { createMailer, composeBody, validateSubject } from './mailer.js';
+export { createMailer, composeBody, validateSubject, validateBodyFooter } from './mailer.js';
 export { createHandlers } from './handlers.js';
 export { renderLoginForm } from './form.js';
-export { normalize, deriveHandle } from './handle.js';
+export { normalize, deriveHandle, secretBytes } from './handle.js';

@@ -93,22 +93,25 @@ test('verifySessionSignature: empty sid before dot -> null', () => {
   assert.equal(verifySessionSignature('.' + fakeSig, SECRET), null);
 });
 
-test('signSession: known vector pins HMAC-SHA256 + sess\\0 domain tag (closes AF-1.2)', () => {
+test('signSession: known vector pins HMAC-SHA256 + sess\\0 + hex-decoded key (AF-1.2, AF-8.1)', () => {
+  // The secret is hex-decoded to 32 raw bytes before HMAC (AF-8.1).
   // Vector computed externally:
   //   const tag = Buffer.from('sess\x00');
-  //   const h = crypto.createHmac('sha256', 'a'.repeat(64));
+  //   const key = Buffer.from('a'.repeat(64), 'hex'); // 32 bytes of 0xaa
+  //   const h = crypto.createHmac('sha256', key);
   //   h.update(tag);
   //   h.update('A'.repeat(43), 'utf8');
-  //   h.digest('hex')  // -> 7d394fde...
+  //   h.digest('hex')  // -> 928a421b...
   //
   // A broken impl (SHA-1 instead of SHA-256, missing tag, wrong tag bytes,
   // tag appended instead of prepended, signing the decoded sid bytes
-  // instead of the base64url string) would fail this even if all the
-  // round-trip and tamper tests above still pass.
+  // instead of the base64url string, or the pre-AF-8.1 ASCII-keyed HMAC)
+  // would fail this even if all the round-trip and tamper tests above
+  // still pass.
   const cookie = signSession('A'.repeat(43), 'a'.repeat(64));
   assert.equal(
     cookie,
     'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.' +
-      '7d394fde31d230ad8efa52cde7a783b0258b236eaa592a655f9b7f93d92c5e5b',
+      '928a421b31f570ab4d688782d3ba368eca757780f3cfa98f0928a139cfb2c2c9',
   );
 });

@@ -319,6 +319,7 @@ export function createHandlers({ store, mailer, config }) {
       baseUrl: cfg.baseUrl,
       linkPath: cfg.linkPath,
       lastLoginAt,
+      bodyFooter: cfg.bodyFooter,
     });
 
     try {

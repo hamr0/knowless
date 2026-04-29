@@ -782,6 +782,20 @@ test('devLogMagicLinks: silent when opt-in is off (AF-6.2)', async () => {
 
 // --- AF-7.3: auth.startLogin programmatic entry ---
 
+test('bodyFooter: appears in submitted mail end-to-end (AF-8.2)', async () => {
+  const footer = 'feedback@addypin.com | privacy first';
+  const h = newHarness({ bodyFooter: footer, openRegistration: true });
+  await postLogin(
+    h.handlers,
+    formBody({ email: REGISTERED }),
+    { origin: 'https://app.example.com' },
+  );
+  assert.equal(h.sentMail.length, 1);
+  const wire = h.sentMail[0].raw;
+  assert.match(wire, /\r\n-- \r\nfeedback@addypin\.com \| privacy first/);
+  h.close();
+});
+
 test('startLogin: real path — registered handle gets a real magic-link mail (AF-7.3)', async () => {
   const h = newHarness();
   h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
