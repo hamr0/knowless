@@ -627,6 +627,18 @@ const { handle, submitted } = await auth.startLogin({
 });
 ```
 
+**`bypassRateLimit` (AF-10).** Trusted server-side callers (CLI
+workers, cron jobs, internal services on the same host as the web
+process) opt out of IP-based rate-limit accounting entirely —
+neither the per-IP login bucket nor the per-IP create bucket is
+checked or incremented. The per-handle token cap
+(`maxActiveTokensPerHandle`) is **still enforced** because that
+defense bounds outstanding tokens for a single user, not request
+volume per IP. Use this when a trusted process would otherwise
+starve the shared bucket against legitimate web traffic from the
+same address (typically `127.0.0.1`). Do NOT plumb this flag from
+unauthenticated user input.
+
 **`subjectOverride` (AF-9).** Adopters who use magic links for
 multiple intents (login, action-confirmation, expiry warning,
 account-recovery) need recognizable subjects per intent. Override

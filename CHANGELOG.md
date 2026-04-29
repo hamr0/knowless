@@ -9,6 +9,37 @@ Versioning is [SemVer](https://semver.org/).
 
 - Caddy forward-auth Docker integration test (TASKS.md 6.8).
 
+## [0.1.8] — 2026-04-28
+
+addypin round 4 — one small API addition + documentation polish.
+
+### Added
+
+- **`bypassRateLimit: true` arg on `auth.startLogin` (AF-10).**
+  Trusted server-side callers (CLI workers, cron jobs, internal
+  services on the same host as the web process) opt out of IP-
+  based rate-limit accounting entirely — neither check nor
+  increment for the `login_ip` and `create_ip` buckets. The per-
+  handle token cap (`maxActiveTokensPerHandle`) is still enforced.
+  Solves the "web + CLI sharing 127.0.0.1" starvation problem
+  without requiring config divergence between processes. Throws
+  on non-boolean. Do NOT plumb this from unauthenticated user
+  input.
+
+### Documentation
+
+- **GUIDE Step 6 rewrite (AF-11).** `auth.handleFromRequest(req)`
+  is now front-and-centre as the load-bearing primitive for
+  adopter authorization. Worked Express-style examples for
+  `requireAuth` middleware and per-handle CRUD gating. Replaces
+  the previous "(coming in v0.2.0)" placeholder with the v0.1.1
+  reality.
+- **OPS.md §11a "Multi-process deployments" (AF-12).** Half-page
+  guide covering when sharing one DB across processes is safe
+  (WAL mode, default), sweeper redundancy semantics, rate-limit
+  enforcement-vs-accounting under sharing (and why AF-10
+  matters), `auth.close()` behavior, and the cross-machine no-go.
+
 ## [0.1.7] — 2026-04-28
 
 addypin integration round 3 — one small API addition.

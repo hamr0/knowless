@@ -2313,6 +2313,9 @@ is missing the defense.
 | AF-2.18 | Secret used as ASCII bytes, not hex-decoded | `crypto.createHmac('sha256', secret)` was passed the 64-char hex string directly. Same 256-bit entropy, but a different HMAC output than systems that hex-decode first. Migration footgun: adopters with existing HMAC-keyed identifiers cannot interoperate. PRD already implied 32 bytes. Surfaced by addypin POC round 2. |
 | AF-2.19 | No operator-controllable footer on auth mail | Adopters with brand/legal/feedback text in their non-auth mail want the same footer on the magic-link email for consistency. Today they'd need to inject a custom mailer and call `composeBody` themselves, defeating the encapsulation. Surfaced by addypin POC round 2. |
 | AF-2.20 | Single factory subject for every magic-link mail | Any adopter that uses magic links for multiple intents (sign-in, action-confirmation, expiry warning, account-recovery) needs recognizable subjects per call. Today knowless sets one factory `subject` that applies uniformly — confirmation, login, and reminder mail are indistinguishable in the inbox. Surfaced by addypin POC round 3 (3 magic-link variants). |
+| AF-2.21 | Trusted server-side callers can't opt out of IP rate-limit | Multi-process adopters (web + CLI / web + worker on the same host) hit the same per-IP bucket from `127.0.0.1`. Setting the cap to 0 at instance level forces config divergence between processes. Surfaced by addypin POC round 4 (Postfix-piped CLI). |
+| AF-2.22 | `handleFromRequest` under-documented | The load-bearing primitive for adopter authorization is in the public API but absent from GUIDE's protected-endpoint examples. New adopters dig source. Surfaced by addypin POC round 4. |
+| AF-2.23 | Multi-process adopter pattern undocumented | better-sqlite3 WAL handles cross-process correctness fine, but no docs explicitly say "multi-process is supported," when it's safe, and what each subsystem does under sharing. Surfaced by addypin POC round 4. |
 
 ### 17.3 Priority-ranked hardening backlog
 
@@ -2392,6 +2395,17 @@ Breaking change re: secret semantics, locked in before v1.0.
   AF-2.20). Validated by the same rules as the factory subject;
   applied identically to sham and real paths so subject can't leak
   hit/miss outcome. SPEC §7.3a. ✓
+
+**v0.1.8 — addypin integration round 4 (low-priority polish):**
+
+- **AF-10:** `bypassRateLimit: true` arg on `auth.startLogin` for
+  trusted server-side callers (closes AF-2.21). Skips IP-based
+  buckets entirely; per-handle token cap still enforced. ✓
+- **AF-11:** GUIDE Step 6 promotes `auth.handleFromRequest` as the
+  load-bearing primitive for protected-endpoint authorization
+  (closes AF-2.22). ✓
+- **AF-12:** OPS.md §11a documents the multi-process adopter
+  pattern (closes AF-2.23). ✓
 
 ### 17.4 Note on FR-6 timing test (AF-1.8)
 

@@ -335,25 +335,54 @@ const auth = knowless({ ..., openRegistration: true });
 Note that open registration adds a per-IP cap on new handles
 (default 3/hour) to mitigate signup spam.
 
-### Step 6: Use sessions in your app
+### Step 6: Use sessions in your app — `auth.handleFromRequest`
 
-After `/auth/callback` succeeds, the user has a session cookie.
-Read it on every protected request:
+After `/auth/callback` succeeds, the user has a session cookie. To
+gate your own protected endpoints, call `auth.handleFromRequest(req)`:
+it returns the requesting session's opaque handle (64-char hex), or
+`null` when the cookie is missing, malformed, or expired. **This is
+the load-bearing primitive for adopter authorization.** The five
+mounted handlers (`login`, `callback`, `verify`, `logout`, `loginForm`)
+own the auth round-trip; everything *else* in your app uses
+`handleFromRequest`.
 
 ```js
+// Express-shaped middleware. Same pattern works in Hono / Fastify /
+// node:http — handleFromRequest takes a node-shaped req and returns
+// a string or null synchronously. No async, no DB hop beyond the
+// session lookup.
 function requireAuth(req, res, next) {
-  // Use auth.verify() in a sub-request shape, or read the cookie
-  // and call into the store. Simplest pattern:
-  // Mount a middleware that calls the verify handler against the
-  // request and checks the result.
-  // (Cleaner pattern coming in v0.2.0 with a middleware factory.)
+  const handle = auth.handleFromRequest(req);
+  if (!handle) {
+    res.statusCode = 401;
+    return res.end('unauthorized');
+  }
+  req.handle = handle;
   next();
 }
+
+// Then on every protected endpoint:
+app.get('/api/pins', requireAuth, (req, res) => {
+  const pins = db.findPinsByOwner(req.handle); // owner_handle = req.handle
+  res.json(pins);
+});
+
+app.delete('/api/pins/:id', requireAuth, (req, res) => {
+  const pin = db.getPin(req.params.id);
+  if (pin.owner_handle !== req.handle) {
+    res.statusCode = 403;
+    return res.end('forbidden');
+  }
+  db.deletePin(req.params.id);
+  res.end();
+});
 ```
 
-For now, the friendliest pattern: route a dedicated `/me` endpoint
-through `auth.verify` and have the rest of your app fetch it on
-mount.
+The `verify` handler is for **forward-auth deployments** (your
+reverse proxy gates upstreams via `/verify` returning 200/401 +
+`X-User-Handle`). For in-process middleware, prefer
+`handleFromRequest` — same answer, no sub-request round-trip, no
+header parsing.
 
 ### Step 7: GDPR right-to-erasure
 

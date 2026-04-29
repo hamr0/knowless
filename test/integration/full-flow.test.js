@@ -927,6 +927,90 @@ test('startLogin: throws on invalid subjectOverride (programmer error) (AF-9)', 
   h.close();
 });
 
+// --- AF-10: bypassRateLimit for trusted server-side callers ---
+
+test('startLogin: bypassRateLimit ignores per-IP cap (AF-10)', async () => {
+  // Set the cap to 1; without bypass, the 2nd call would be rate-limited
+  // and silently drop. With bypass, both calls send mail.
+  const h = newHarness({ maxLoginRequestsPerIpPerHour: 1 });
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  await h.handlers.startLogin({
+    email: REGISTERED,
+    sourceIp: '127.0.0.1',
+    bypassRateLimit: true,
+  });
+  await h.handlers.startLogin({
+    email: REGISTERED,
+    sourceIp: '127.0.0.1',
+    bypassRateLimit: true,
+  });
+  await h.handlers.startLogin({
+    email: REGISTERED,
+    sourceIp: '127.0.0.1',
+    bypassRateLimit: true,
+  });
+  assert.equal(h.sentMail.length, 3);
+  h.close();
+});
+
+test('startLogin: bypassRateLimit does NOT increment the bucket (AF-10)', async () => {
+  // After bypassed calls, a normal call from the same IP should still
+  // see a fresh bucket — bypass means "I'm not playing this game,"
+  // not "consume capacity silently."
+  const h = newHarness({ maxLoginRequestsPerIpPerHour: 2 });
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  for (let i = 0; i < 5; i++) {
+    await h.handlers.startLogin({
+      email: REGISTERED,
+      sourceIp: '127.0.0.1',
+      bypassRateLimit: true,
+    });
+  }
+  // Now 2 normal calls must succeed; the 3rd is the limit.
+  await h.handlers.startLogin({ email: REGISTERED, sourceIp: '127.0.0.1' });
+  await h.handlers.startLogin({ email: REGISTERED, sourceIp: '127.0.0.1' });
+  const before = h.sentMail.length;
+  await h.handlers.startLogin({ email: REGISTERED, sourceIp: '127.0.0.1' });
+  // 3rd was rate-limited; mail count unchanged.
+  assert.equal(h.sentMail.length, before);
+  h.close();
+});
+
+test('startLogin: bypassRateLimit still respects per-handle token cap (AF-10)', async () => {
+  // The token cap (maxActiveTokensPerHandle) is a different defense —
+  // it bounds outstanding tokens for a single user, not request volume
+  // per IP. bypass MUST NOT disable it.
+  const h = newHarness({ maxActiveTokensPerHandle: 2 });
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+  for (let i = 0; i < 5; i++) {
+    await h.handlers.startLogin({
+      email: REGISTERED,
+      sourceIp: '127.0.0.1',
+      bypassRateLimit: true,
+    });
+  }
+  // 5 sends went out, but only 2 tokens are active (oldest evicted).
+  assert.equal(h.sentMail.length, 5);
+  assert.equal(
+    h.store.countActiveTokens(deriveHandle(REGISTERED, TEST_SECRET)),
+    2,
+  );
+  h.close();
+});
+
+test('startLogin: throws on non-boolean bypassRateLimit (AF-10)', async () => {
+  const h = newHarness();
+  await assert.rejects(
+    () =>
+      h.handlers.startLogin({
+        email: 'a@b.com',
+        bypassRateLimit: 'yes',
+      }),
+    /boolean/,
+  );
+  h.close();
+});
+
 test('startLogin: skips Origin check (server-side caller is trusted) (AF-7.3)', async () => {
   // No req object means no Origin header at all — startLogin doesn't
   // care because it's a programmatic API.

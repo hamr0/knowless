@@ -243,7 +243,7 @@ export function createHandlers({ store, mailer, config }) {
    *   handle is null only when the email failed to normalize (programmer
    *   bug for startLogin; same-shape silent for /login).
    */
-  async function runSendLink({ emailRaw, nextRaw, sourceIp, subject }) {
+  async function runSendLink({ emailRaw, nextRaw, sourceIp, subject, bypassRateLimit = false }) {
     // Step 1: parse + normalize
     let emailNorm;
     try {
@@ -252,8 +252,13 @@ export function createHandlers({ store, mailer, config }) {
       return { handle: null, isSham: false, emailNorm: emailRaw, nextValidated: null };
     }
 
-    // Step 3: per-IP rate limit on /login — exempt short-circuit
+    // Step 3: per-IP rate limit on /login — exempt short-circuit.
+    // AF-10: trusted server-side callers (CLI, cron, worker) opt out
+    // of IP-based rate-limit accounting entirely — neither check nor
+    // increment. Per-handle token cap (insertToken's maxActive) still
+    // applies; only the IP buckets are bypassed.
     if (
+      !bypassRateLimit &&
       rateLimitExceeded(
         store,
         'login_ip',
@@ -271,7 +276,7 @@ export function createHandlers({ store, mailer, config }) {
     const exists = store.handleExists(handle);
     let isCreating = !exists && cfg.openRegistration;
 
-    if (isCreating) {
+    if (isCreating && !bypassRateLimit) {
       if (
         rateLimitExceeded(
           store,
@@ -353,8 +358,10 @@ export function createHandlers({ store, mailer, config }) {
       }
     }
 
-    rateLimitIncrement(store, 'login_ip', sourceIp, HOUR_MS);
-    if (isCreating) rateLimitIncrement(store, 'create_ip', sourceIp, HOUR_MS);
+    if (!bypassRateLimit) {
+      rateLimitIncrement(store, 'login_ip', sourceIp, HOUR_MS);
+      if (isCreating) rateLimitIncrement(store, 'create_ip', sourceIp, HOUR_MS);
+    }
 
     return { handle, isSham, emailNorm, nextValidated };
   }
@@ -404,6 +411,7 @@ export function createHandlers({ store, mailer, config }) {
     nextUrl,
     sourceIp = '',
     subjectOverride,
+    bypassRateLimit = false,
   } = {}) {
     // Programmer-error guards (AF-7.3). These DO throw; they're not
     // silent-miss conditions, they're "you called the API wrong."
@@ -415,6 +423,9 @@ export function createHandlers({ store, mailer, config }) {
     }
     if (typeof sourceIp !== 'string') {
       throw new Error('startLogin: sourceIp must be a string when provided');
+    }
+    if (typeof bypassRateLimit !== 'boolean') {
+      throw new Error('startLogin: bypassRateLimit must be a boolean when provided');
     }
     // AF-9: per-call subject override. Validated with the same rules as
     // the factory subject (ASCII, ≤60 chars, no CR/LF). Throws on
@@ -431,6 +442,7 @@ export function createHandlers({ store, mailer, config }) {
       nextRaw: nextUrl ?? null,
       sourceIp,
       subject,
+      bypassRateLimit,
     });
     // Same-shape return: rate-limit / sham / real all collapse here.
     // `handle` is the HMAC of the normalized email (or null if email

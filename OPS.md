@@ -540,6 +540,55 @@ in that order — most spam-folder verdicts trace to one of those four.
 
 ---
 
+## 11a. Multi-process deployments (web + worker / CLI)
+
+Multiple processes can share one knowless SQLite file. This is a
+common adopter pattern: a long-running web server plus a per-message
+CLI invoked by Postfix's `pipe` transport, or a web server plus a
+cron worker handling 48h reminders. Each process instantiates
+`knowless({...})` against the same `dbPath`.
+
+**Why this works.** `better-sqlite3` opens the database in WAL mode
+by default (knowless explicitly sets `journal_mode=WAL` at startup).
+WAL allows multiple readers and one writer concurrently, with the
+OS-level locking semantics needed for cross-process safety. Every
+write goes through a prepared statement under a SQLite transaction,
+so two processes inserting tokens or sessions at the same time can't
+corrupt the table.
+
+**What to know about each subsystem under multi-process:**
+
+- **Sweeper redundancy is harmless.** Each process runs its own 5-
+  minute sweep tick. The DELETE statements are idempotent — once
+  one process has deleted a row, the others' DELETEs simply affect
+  zero rows. No coordination needed.
+- **Rate-limit rows are shared but enforcement is per-process.**
+  All processes read and write the same `rate_limits` table, so
+  counter values are consistent. But each process makes its own
+  *enforcement* decision against its own configured cap. This
+  matters: a CLI worker calling `auth.startLogin` from `127.0.0.1`
+  uses the same `login_ip` bucket as web traffic from `127.0.0.1`.
+  Trusted CLI callers should pass `bypassRateLimit: true` to
+  `startLogin` (AF-10) so they don't starve the shared bucket and
+  don't participate in accounting.
+- **`auth.close()` from one process doesn't affect the others.**
+  Each process holds its own connection. Closing one is the right
+  thing to do at that process's shutdown; the database remains
+  open for the others.
+- **Magic-link tokens and session IDs are globally unique.** The
+  random-byte primitives have enough entropy that two processes
+  minting tokens concurrently won't collide (43-char base64url =
+  256 bits).
+
+**Don't share the DB across machines.** SQLite WAL only protects
+processes on the same host (it relies on POSIX advisory locks).
+For a multi-host knowless deployment, run a single instance behind
+a load balancer or — better — run one knowless per host, each
+with its own DB. Sessions are per-host but that's usually what you
+want for forward-auth-style deployments anyway.
+
+---
+
 ## 12. Backup and recovery
 
 The only stateful file is the SQLite database (`KNOWLESS_DB_PATH`,
