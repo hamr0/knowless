@@ -26,6 +26,57 @@ v1.0.0 are:
 Feature requests are deflected to PRD §14 NO-GO, to sibling projects,
 or to forking. The library being "done" is a feature.
 
+### Fixed
+
+- **XFF/X-Real-IP never honored through handler path (AF-28).**
+  `createHandlers` pre-built `trustedProxies` into a `{ has }` object
+  and passed it to `determineSourceIp`, which re-called
+  `buildTrustedPeers` on it. The pre-built object is not a `BlockList`,
+  array, or `Set`, so the peer list fell through to `[]`. Net effect:
+  trusted-proxy matching was silently empty in the handler code path —
+  rate limiting hit the reverse-proxy IP instead of the real client IP,
+  and XFF/X-Real-IP headers were ignored regardless of the
+  `trustedProxies` config. Abuse unit tests were passing because they
+  call `determineSourceIp` directly with raw arrays, bypassing the
+  handler path. Fix: removed the pre-build in `createHandlers`;
+  `determineSourceIp` now receives `cfg.trustedProxies` directly. Closes
+  AF-28.
+
+- **`validateSubject` allowed CR/LF, enabling header injection in
+  standalone callers (AF-29).** The ASCII regex `/^[\x00-\x7f]*$/`
+  matched CR (0x0D) and LF (0x0A). `validateSubject` is re-exported as a
+  public validator (AF-9.1 / v0.1.7) so callers using it as a standalone
+  gate were unprotected. `composeRaw` caught the injection downstream, but
+  the validator is the authoritative public guard. Fix: added an explicit
+  `/[\r\n]/` check to `validateSubject`, consistent with the guards already
+  present in `validateFromName` and `validateBodyOverride`. Closes AF-29.
+
+- **Factory `subject` not validated at startup (AF-30).** The factory
+  `subject` option was never passed to `validateSubject` during
+  `createHandlers` startup, breaking the fail-fast pattern that
+  `bodyFooter` (`validateBodyFooter` in `index.js`) and `fromName`
+  (`validateFromName` in `createMailer`) already followed. A non-ASCII
+  subject or empty string silently passed config time and would only fail
+  at first `mailer.submit()` — potentially hours into production. Fix:
+  added `validateSubject(cfg.subject)` to the config-validation block in
+  `createHandlers`. Closes AF-30.
+
+- **`validateBodyFooter` rejected 4-line footers with a trailing newline
+  (AF-31).** `footer.split('\n').length > 4` counted 5 split parts for
+  `"a\nb\nc\nd\n"` (4 logical lines, trailing newline as is conventional
+  for multi-line strings). Fix: strip a single trailing newline before
+  counting: `footer.replace(/\n$/, '').split('\n').length > 4`. Closes
+  AF-31.
+
+### Documentation
+
+- **`runSendLink` JSDoc corrected: `handle` is null for both malformed
+  email and per-IP rate-limit short-circuit (AF-32).** The JSDoc stated
+  `handle` is null "only when the email failed to normalize." The per-IP
+  rate-limit early return also returns `handle: null` because `deriveHandle`
+  has not run at that point. No behavior change — documentation only. Closes
+  AF-32.
+
 ## [1.0.0] — 2026-04-29
 
 **Walk-away release.** No new API surface vs v0.2.3 — v1.0.0 is the

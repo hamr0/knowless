@@ -2649,6 +2649,44 @@ here so future contributors don't re-propose them.
   `(messageId → handle)` map. Knowless never stores the mapping,
   never carries operator-secret rotation burden.
 
+**Post-v1.0.0 bug fixes (maintenance window):**
+
+Found during a post-release code review (2026-05-01). All are v1.x
+eligible per PRD §6.3 (bug fixes that don't change the API surface).
+
+- **AF-28:** XFF/X-Real-IP never honored through handler path. Root
+  cause: `createHandlers` pre-built `trustedProxies` into a `{ has }`
+  object, then passed it to `determineSourceIp`, which re-called
+  `buildTrustedPeers` internally. The pre-built object isn't recognized
+  as a `BlockList`, array, or `Set` — peer list fell through to `[]`,
+  making trusted-proxy matching silently empty. Abuse unit tests passed
+  because they call `determineSourceIp` directly with raw arrays. Fix:
+  removed the pre-build; `createHandlers` passes `cfg.trustedProxies`
+  directly to `determineSourceIp`. ✓
+
+- **AF-29:** `validateSubject` allowed CR/LF, enabling header injection
+  through the public re-export. ASCII regex `/^[\x00-\x7f]*$/` matched
+  0x0D and 0x0A. `composeRaw` caught it downstream, but the validator
+  is the authoritative public boundary (re-exported since v0.1.7 /
+  AF-9.1). Fix: added explicit `/[\r\n]/` check, consistent with
+  `validateFromName` and `validateBodyOverride`. ✓
+
+- **AF-30:** Factory `subject` not validated at startup, breaking the
+  fail-fast contract that `bodyFooter` and `fromName` already follow.
+  A non-ASCII or empty operator subject would silently pass config time
+  and fail at first `mailer.submit()`. Fix: `validateSubject(cfg.subject)`
+  added to the config-validation block in `createHandlers`. ✓
+
+- **AF-31:** `validateBodyFooter` rejected 4-line footers with a
+  trailing newline. `split('\n').length > 4` counted 5 parts for
+  `"a\nb\nc\nd\n"` (4 logical lines + trailing LF). Fix: strip a
+  single trailing newline before counting. ✓
+
+- **AF-32:** `runSendLink` JSDoc misstated that `handle` is null only
+  on malformed email. The per-IP rate-limit early-return path also
+  returns `handle: null` (before `deriveHandle` runs). Documentation
+  only; no behavior change. ✓
+
 ### 17.4 Note on FR-6 timing test (AF-1.8)
 
 The FR-6 test is a *regression detector*, not a *property

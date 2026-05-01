@@ -224,8 +224,6 @@ test('expired session: verify returns 401 (closes AF-1.3)', async () => {
   // Force-expire the session row by rewriting expires_at to the past.
   // SPEC §9 verify path checks `expiresAt <= now()`; this is the branch
   // we need to exercise but never could with a freshly-created session.
-  const allSessions = h.store.sweepSessions(0); // no-op count read
-  void allSessions;
   // Use the underlying DB by manually opening a row and updating.
   // The store doesn't expose a mutate-expiry method (and shouldn't —
   // it's a test concern); we go through the only exposed knob: delete
@@ -736,7 +734,6 @@ test('devLogMagicLinks: prints link to stderr only when SMTP fails AND opt-in (A
       openRegistration: true,
       devLogMagicLinks: true,
     });
-    h.handlers._config.mailer = null;
     // Patch mailer.submit to throw — easier than rebuilding the harness.
     const realSubmit = h.mailer.submit;
     h.mailer.submit = async () => { throw new Error('connect ECONNREFUSED'); };

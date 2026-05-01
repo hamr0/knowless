@@ -5,7 +5,6 @@ import { newSid, signSession, verifySessionSignature } from './session.js';
 import { composeBody, validateSubject, validateBodyOverride } from './mailer.js';
 import { renderLoginForm } from './form.js';
 import {
-  buildTrustedPeers,
   determineSourceIp,
   rateLimitExceeded,
   rateLimitIncrement,
@@ -191,9 +190,7 @@ export function createHandlers({ store, mailer, config, events }) {
       throw new Error('config.baseUrl invalid');
     }
   }
-
-  // Build once at handler creation; supports plain IPs and CIDRs (AF-6.3).
-  const trustedProxies = buildTrustedPeers(cfg.trustedProxies);
+  validateSubject(cfg.subject);
 
   // AF-7.1: emit at most one warning per handler instance about an
   // upstream body parser swallowing the request body. Loud enough to
@@ -253,8 +250,9 @@ export function createHandlers({ store, mailer, config, events }) {
    *
    * @returns {Promise<{handle: string|null, isSham: boolean,
    *                    emailNorm: string, nextValidated: string|null}>}
-   *   handle is null only when the email failed to normalize (programmer
-   *   bug for startLogin; same-shape silent for /login).
+   *   handle is null when the email failed to normalize (programmer bug
+   *   for startLogin) OR when per-IP rate-limit short-circuited before
+   *   handle derivation; same-shape silent for /login.
    */
   async function runSendLink({
     emailRaw,
@@ -469,7 +467,7 @@ export function createHandlers({ store, mailer, config, events }) {
       return;
     }
 
-    const sourceIp = determineSourceIp(req, trustedProxies);
+    const sourceIp = determineSourceIp(req, cfg.trustedProxies);
     const result = await runSendLink({ emailRaw, nextRaw, sourceIp });
     sameResponse(res, result.emailNorm, result.nextValidated ?? '');
   }

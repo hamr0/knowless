@@ -659,10 +659,11 @@ rate-limits) belongs above the library.
     who hold raw 32-byte keys.
 
 18. **`bodyFooter` constraints (AF-8.2).** ASCII only — `·` is NOT
-    ASCII, use `|` or `-`. ≤ 240 chars, ≤ 4 lines, no `http(s)://`
-    URLs (would conflict with the magic-link line). Validated at
-    factory startup; fails fast. Goes after RFC 3676 `"-- "`
-    delimiter so mail clients strip it from quoted replies.
+    ASCII, use `|` or `-`. ≤ 240 chars, ≤ 4 lines (a single trailing
+    newline is allowed and not counted as an extra line), no
+    `http(s)://` URLs (would conflict with the magic-link line).
+    Validated at factory startup; fails fast. Goes after RFC 3676
+    `"-- "` delimiter so mail clients strip it from quoted replies.
 
 19. **`startLogin` is silent at every layer (FR-6).** Returns
     `{handle, submitted: true}` for *every* branch — real send, sham,

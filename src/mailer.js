@@ -88,7 +88,7 @@ export function validateBodyFooter(footer) {
   if (footer.length > 240) throw new Error('bodyFooter must be ≤ 240 chars');
   if (!ASCII_RE.test(footer)) throw new Error('bodyFooter must be ASCII');
   if (footer.includes('\r')) throw new Error('bodyFooter must not contain CR');
-  if (footer.split('\n').length > 4) {
+  if (footer.replace(/\n$/, '').split('\n').length > 4) {
     throw new Error('bodyFooter must be ≤ 4 lines');
   }
   if (/https?:\/\//i.test(footer)) {
@@ -269,6 +269,7 @@ export function validateSubject(subject) {
   }
   if (subject.length > 60) throw new Error('subject longer than 60 chars');
   if (!ASCII_RE.test(subject)) throw new Error('subject contains non-ASCII');
+  if (/[\r\n]/.test(subject)) throw new Error('subject must not contain CR/LF');
   const warnings = [];
   const triggers = ['!!', '$$', 'FREE', 'URGENT', 'WINNER'];
   for (const t of triggers) {
