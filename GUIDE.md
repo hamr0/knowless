@@ -106,6 +106,27 @@ nothing else*.
 - **Walks away at v1.0.0.** Maintenance mode (security patches +
   bug fixes) after that, by design.
 
+### Stability commitments under walk-away
+
+v1.x will accept:
+- Documentation corrections and clarifications.
+- Helper exports that pull existing mechanism back into the library
+  (where adopters were re-implementing it inline).
+- Bug fixes that don't change the API surface.
+- Security fixes (CVEs in `nodemailer` or `node:sqlite` with
+  user-visible impact).
+
+v1.x will NOT accept:
+- New flows, new methods on the auth instance, new constructor options.
+- Generalisations toward token-issuance frameworks (see
+  [`knowless.context.md`](knowless.context.md) § "What knowless is and
+  is not").
+- Per-adopter ergonomic shortcuts that the host can implement in ≤30
+  LOC against the existing API.
+
+The library being closed is a feature. Forks are encouraged for
+requirements that don't fit.
+
 ## Walkthrough: library mode
 
 The shape: import `knowless`, configure it, mount the handlers on
@@ -574,6 +595,114 @@ boot for the wrong reason. Adopters who want fail-fast call
 `verifyTransport()` explicitly; everyone else gets eventually-consistent
 SMTP startup.
 
+## Custom mailer adapter (hosts with their own outbound stack)
+
+The default mailer submits via nodemailer to localhost:25 (your Postfix).
+If you already run outbound infrastructure with DKIM signing, a
+transactional API, or a sendmail pipe, you can inject a mailer object:
+
+```js
+import { knowless, dropShamRecipient } from 'knowless';
+
+// Timing-equivalence self-equalisation for subprocess-based mailers.
+// Pre-measure your P95 delivery time, pad real sends to match.
+const TRANSPORT_FLOOR_MS = 8; // example — calibrate for your stack
+
+async function padToTransportFloor(startMs) {
+  const elapsed = performance.now() - startMs;
+  if (elapsed < TRANSPORT_FLOOR_MS) {
+    await new Promise(r => setTimeout(r, TRANSPORT_FLOOR_MS - elapsed));
+  }
+}
+
+const mailer = {
+  async send(envelope, raw) {
+    const t0 = performance.now();
+
+    if (dropShamRecipient(envelope)) {
+      // FR-6: no wire bytes, but burn the same wall time real delivery
+      // would take so real-vs-sham timing stays within ≤1ms.
+      await padToTransportFloor(t0);
+      return;
+    }
+
+    // Example: pipe to sendmail (local MTA handles DKIM via opendkim milter)
+    await new Promise((resolve, reject) => {
+      const proc = spawn('sendmail', ['-t', '-oi'], { stdio: ['pipe', 'ignore', 'pipe'] });
+      let stderr = '';
+      proc.stderr.on('data', d => { stderr += d; });
+      proc.stdin.write(raw);
+      proc.stdin.end();
+      proc.on('close', code => {
+        if (code === 0) resolve();
+        else reject(new Error(`sendmail exited ${code}: ${stderr}`));
+      });
+    });
+    await padToTransportFloor(t0);
+  },
+
+  async verify() {
+    // Optional — called once at factory construction.
+    // Throw here to abort startup on misconfigured transport.
+    // Example: probe that sendmail is available.
+    await execFile('sendmail', ['-bv', 'root']).catch(err => {
+      throw new Error(`sendmail probe failed: ${err.message}`);
+    });
+  },
+
+  // close() is optional — call yourself on shutdown if you allocated resources.
+};
+
+const auth = knowless({ secret, baseUrl, from, mailer });
+```
+
+### Timing-equivalence CI smoke test
+
+Add this to your integration tests to verify your adapter meets the
+≤1ms FR-6 bar:
+
+```js
+// Run 200 warmup pairs, then 500 timed pairs.
+// Assert |mean(real) - mean(sham)| < 1.0ms.
+const WARMUP = 200, SAMPLES = 500;
+const realTimes = [], shamTimes = [];
+
+for (let i = 0; i < WARMUP + SAMPLES; i++) {
+  const t0 = performance.now();
+  await mailer.send({ to: 'alice@example.com' }, RAW_FIXTURE);
+  const tReal = performance.now() - t0;
+
+  const t1 = performance.now();
+  await mailer.send({ to: 'null@knowless.invalid' }, RAW_FIXTURE);
+  const tSham = performance.now() - t1;
+
+  if (i >= WARMUP) { realTimes.push(tReal); shamTimes.push(tSham); }
+}
+
+const mean = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+const delta = Math.abs(mean(realTimes) - mean(shamTimes));
+assert(delta < 1.0, `timing delta ${delta.toFixed(3)}ms exceeds 1ms FR-6 bar`);
+```
+
+### Postfix transport_maps fallback
+
+If you don't want to write a custom mailer, the default nodemailer
+path still works even with opendkim: configure Postfix to sign on the
+way out (MTA-level DKIM via `milter_default_action`). You only need a
+custom mailer if you want to bypass localhost submission entirely.
+
+Whichever path you take, ensure the `transport_maps` null-route is in
+place:
+
+```
+# /etc/postfix/transport
+knowless.invalid    discard:silently dropped by knowless null-route
+```
+
+```
+postmap /etc/postfix/transport && systemctl reload postfix
+```
+
 ## Walkthrough: standalone server mode
 
 Run `npx knowless-server`, point Caddy / nginx / Traefik at it for
@@ -761,11 +890,22 @@ once, back it up safely, never expose it.
 
 ### Can I customise the login HTML?
 
-No. The form is hardcoded. Operators wanting branding fork the
+The built-in form is hardcoded. Operators wanting branding fork the
 project. Rationale in [`docs/01-product/PRD.md`](docs/01-product/PRD.md) §16.12: templating
 is a slope ("let me put my logo" → "let me theme the page" →
-"let me embed a JS framework"). The hardcoded form refuses to
-drift.
+"let me embed a JS framework"). The hardcoded form refuses to drift.
+
+However, you can **skip mounting `loginForm`** entirely and serve your
+own form, provided it satisfies the handler contract:
+
+- POST to `loginPath` (default `/login`).
+- Include an `email` field in the `application/x-www-form-urlencoded`
+  body.
+- Do **not** pre-parse the body upstream — knowless reads the request
+  stream itself. A body-parser middleware mounted before `auth.login`
+  will silently steal the data (see gotcha #15 in
+  [`knowless.context.md`](knowless.context.md)).
+- Optional: include a `next` field for the post-callback redirect URL.
 
 ### How do I add 2FA / WebAuthn / TOTP?
 
@@ -774,20 +914,51 @@ stop. WebAuthn after login is a different layer.
 
 ### What about CSRF on POST /login?
 
-The login form is unauthenticated, so traditional CSRF
-mitigations (anti-CSRF tokens) don't apply directly. SameSite=Lax
-on the session cookie covers the post-login risk. CSRF on the
-unauthenticated /login endpoint is on the v0.2 open-questions
-list (SPEC §15 Q-4) — Origin-header validation is the likely
-answer.
+Knowless validates the `Origin` (or `Referer`) header against
+`cookieDomain` on both `POST /login` and `POST /logout`.
+
+- **Failure mode:** 403 with a plain-text body `"Forbidden"`. No
+  redirect, no JSON envelope.
+- **Browser-absent callers** (curl, server-to-server): if neither
+  `Origin` nor `Referer` is present, the check passes — the
+  browser is the CSRF threat model, not API callers. Programmatic
+  callers that do send an `Origin` header must ensure it matches
+  `cookieDomain`.
+- **The check is not disable-able.** Do not add an upstream
+  exception; the Origin check is the CSRF defence (SPEC §7.3 Step
+  0). Do NOT add a separate CSRF token — it would duplicate a
+  defence already in place and complicate custom form integration.
+
+### What are the rate-limit defaults, and what does a rate-limited response look like?
+
+Defaults (all configurable at construction, no live tuning):
+
+| Option | Default | Scope |
+|---|---|---|
+| `maxLoginRequestsPerIpPerHour` | 30 | Per source IP |
+| `maxNewHandlesPerIpPerHour` | 3 | Per source IP (open-registration only) |
+| `maxActiveTokensPerHandle` | 5 | Per handle (unexpired, unused) |
+
+A rate-limited submission returns **202** with the same HTML body as a
+successful send — identical to the sham and real-send responses. This
+is intentional: distinct status or body would let an attacker enumerate
+which IP is being throttled. Aggregate counts are surfaced via the
+`onSuppressionWindow` hook (v0.2.1); individual rate-limit hits are
+not exposed per-event by design (see [`knowless.context.md`](knowless.context.md)
+§ "Why three hooks, not four").
 
 ### Can I run multiple instances behind a load balancer?
 
-Yes — the SQLite store is shared across processes via the file
-system. Concurrent writes use SQLite's `BEGIN IMMEDIATE` for the
-token-issuance transaction (SPEC §4.7). For very high concurrency
-(>1000 logins/sec), implement the store interface against
-Postgres or Redis.
+The default SQLite store is a single-process embedded engine. Knowless
+is designed for single-process deployments. Contention shows up as
+`SQLITE_BUSY` errors in logs; if you see them, your write rate exceeds
+the single-process envelope. Benchmark in your own environment — the
+answer depends on kernel, filesystem, SQLite version, and Node version,
+and v1.x carries no numeric guarantee across upgrades.
+
+For multi-process or multi-node deployments, implement the store
+interface against Postgres, Redis, or any other backend. The interface
+is documented in [`docs/02-design/SPEC.md`](docs/02-design/SPEC.md) §13.
 
 ### How do I see what's in the store?
 

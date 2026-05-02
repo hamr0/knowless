@@ -22,6 +22,44 @@ v1.0.0 are:
   user-visible impact)
 - Bug fixes that don't change the API surface
 - Documentation corrections
+- Helper exports that pull existing mechanism back into the library
+
+## [1.1.0] — 2026-05-02
+
+Mailer-contract clarification release. Pulls FR-6 sham-routing
+mechanism back into the library, makes the custom-mailer contract
+explicit, and codifies walk-away scope in the docs.
+
+### Added
+
+- `dropShamRecipient(envelope, shamRecipient?)` — exported pure
+  helper. Custom mailers call it to no-op sham sends without external
+  delivery. Exact-match predicate against the configured
+  `shamRecipient` (default `null@knowless.invalid`). No behaviour
+  change inside the library; ~10 LOC.
+
+### Documented
+
+- `knowless.context.md` § "What knowless is and is not" — scope
+  doctrine: knowless is the substrate for session-bearing logins, not
+  generic confirmation tokens. Adopters with one-shot non-login flows
+  keep their own token system.
+- `knowless.context.md` § "Custom mailer contract" — five explicit
+  obligations for injected mailers: sham-recipient handling, FR-6
+  timing equivalence ownership (≤1ms, mailer's responsibility),
+  RFC822 fidelity, `verify()` semantics, `close()` lifecycle.
+- `knowless.context.md` Public API — "Post-callback handle resolution"
+  block: no callback hook, `nextUrl` route is the seam.
+- `GUIDE.md` § "Stability commitments under walk-away" — what v1.x
+  will and will not accept.
+- `GUIDE.md` § "Custom mailer adapter" — appendix with sendmail-pipe
+  skeleton, FR-6 CI smoke-test pattern, and Postfix fallback note.
+- `GUIDE.md` FAQ — custom login form contract, rate-limit defaults
+  and response shape, Origin/Referer CSRF failure mode (accurate;
+  replaces stale v0.2-era note), SQLite single-process envelope
+  (qualitative; no numeric guarantee carried forward).
+
+No breaking changes. No behaviour changes inside the library.
 
 Feature requests are deflected to PRD §14 NO-GO, to sibling projects,
 or to forking. The library being "done" is a feature.

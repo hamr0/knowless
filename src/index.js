@@ -279,6 +279,24 @@ export function knowless(options = {}) {
   };
 }
 
+/**
+ * Returns true if `envelope.to` equals the sham null-route recipient
+ * that knowless uses for FR-6 timing-equivalence sends. Custom mailers
+ * MUST call this and no-op the wire send when it returns true. The
+ * library still records the sham token row; this helper only governs
+ * whether to put bytes on the wire.
+ *
+ * Pass the same `shamRecipient` you configured the auth instance with,
+ * or omit to use the default `null@knowless.invalid`.
+ *
+ * @param {object} envelope  Object with a `to` field (the recipient address).
+ * @param {string} [shamRecipient]  Defaults to `'null@knowless.invalid'`.
+ * @returns {boolean}
+ */
+export function dropShamRecipient(envelope, shamRecipient = 'null@knowless.invalid') {
+  return envelope?.to === shamRecipient;
+}
+
 export { createStore } from './store.js';
 export {
   createMailer,

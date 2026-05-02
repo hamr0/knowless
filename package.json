@@ -1,6 +1,6 @@
 {
   "name": "knowless",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Small, opinionated, full-stack passwordless auth for Node.js services that don't need to email their users for anything but the sign-in link.",
   "type": "module",
   "main": "./src/index.js",

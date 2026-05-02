@@ -30,6 +30,23 @@ This document is the dense reference. For the why, see
 `docs/01-product/PRD.md`. For the wire formats, see
 `docs/02-design/SPEC.md`. For an adopter walkthrough, see `GUIDE.md`.
 
+## What knowless is and is not
+
+Knowless is the substrate for **session-bearing logins**: prove control
+of an email, get a session cookie, do work under that session. The mint
+path is single-use, short-TTL, and exists to bootstrap the cookie — not
+as a generic confirmation primitive.
+
+If you need ad-hoc one-shot confirmation tokens with caller-chosen TTLs
+(event activation that may sit in an inbox over a weekend, email-change
+confirmation, magic-action links that aren't logins), **keep your own
+token system for that step** and use knowless for the session that
+follows. The walk-away release intentionally does not grow toward generic
+token issuance — that's a different library with a different threat
+model.
+
+See § "What's NOT in knowless, and why" for the full lens.
+
 ## Which mode do I need?
 
 | Mode | What it does | When to use |
@@ -175,23 +192,41 @@ const auth = knowless({
 | `config` | -- | object | Merged effective config; safe to read (do not mutate) |
 | `close` | -- | void | Stops sweeper, closes mailer + store. Call on shutdown. |
 
+### Post-callback handle resolution
+
+There is no callback hook fired by knowless on confirmation. The host's
+`nextUrl` route is the seam. Read the handle there:
+
+```js
+// In your post-callback landing route:
+const handle = auth.handleFromRequest(req);
+if (!handle) return res.writeHead(401).end();
+// Now do host-side work keyed by handle.
+```
+
+This is deliberate: the host knows what "successful login means for me";
+knowless does not. Both `auth.login` (form) and `auth.startLogin`
+(programmatic) land here after the link is clicked — the post-callback
+route is the single seam for all login modes.
+
 Re-exports for advanced consumers:
 
 ```js
 import {
-  knowless,         // factory
-  createStore,      // direct store access (admin scripts)
-  createMailer,     // direct mailer access
-  createHandlers,   // bring your own factory wiring
-  composeBody,      // pure: build the mail body
-  validateSubject,  // pure: validate operator-supplied subject
-  validateBodyFooter, // pure: validate operator-supplied footer (AF-8.2)
+  knowless,            // factory
+  dropShamRecipient,   // pure: sham-address predicate for custom mailers
+  createStore,         // direct store access (admin scripts)
+  createMailer,        // direct mailer access
+  createHandlers,      // bring your own factory wiring
+  composeBody,         // pure: build the mail body
+  validateSubject,     // pure: validate operator-supplied subject
+  validateBodyFooter,  // pure: validate operator-supplied footer (AF-8.2)
   validateBodyOverride, // pure: validate per-call body override (AF-26)
-  validateFromName, // pure: validate operator-supplied From: display name (AF-27)
-  renderLoginForm,  // pure: HTML5 page rendering
-  normalize,        // pure: email normalization
-  deriveHandle,     // pure: HMAC-SHA256(hex-decoded secret, email)
-  secretBytes,      // pure: coerce hex string → 32-byte HMAC key
+  validateFromName,    // pure: validate operator-supplied From: display name (AF-27)
+  renderLoginForm,     // pure: HTML5 page rendering
+  normalize,           // pure: email normalization
+  deriveHandle,        // pure: HMAC-SHA256(hex-decoded secret, email)
+  secretBytes,         // pure: coerce hex string → 32-byte HMAC key
 } from 'knowless';
 ```
 
@@ -448,6 +483,57 @@ which requires the operator secret.
 [Caddy verifies cookie via /verify, proxies to Uptime Kuma]
 ```
 
+## Custom mailer contract
+
+When you inject `options.mailer`, knowless hands off five obligations.
+The default localhost-SMTP mailer satisfies them all; custom mailers
+must satisfy them deliberately.
+
+**1. Sham-recipient handling.** Knowless addresses sham sends (FR-6
+timing-equivalence sends for missed handles, rate-limit hits,
+exempt-handle short-circuits) to `shamRecipient` (default
+`null@knowless.invalid`). Custom mailers MUST drop these without
+external delivery. Use the exported helper:
+
+```js
+import { dropShamRecipient } from 'knowless';
+
+async function send(envelope, raw) {
+  if (dropShamRecipient(envelope)) return; // no wire send, no error
+  // ...actually deliver raw
+}
+```
+
+Forgetting this lets sham mail bounce, distinguishing miss from hit on
+the wire and reopening the enumeration oracle that FR-6 closes. If you
+configured a custom `shamRecipient`, pass it as the second argument:
+`dropShamRecipient(envelope, cfg.shamRecipient)`.
+
+**2. Timing equivalence (≤1ms).** Real-vs-sham wire-time difference
+must stay within ≤1ms, measured from the start of the mailer's
+`send(envelope, raw)` call to its returned promise's resolution. The
+host knows its transport's jitter; the library cannot equalise around an
+opaque mailer. Mailers spawning a subprocess per send (e.g. `sendmail`
+pipe) MUST self-equalise: pre-warm the subprocess,
+parallel-spawn-then-discard, or measure-and-pad. See FR-6 above for
+why the bar matters.
+
+**3. RFC822 fidelity.** Ship the body knowless composes byte-for-byte.
+No quoted-printable re-encoding, no header rewriting (other than
+envelope routing your transport requires), no soft-break wrapping, no
+charset transcoding. See gotcha #9.
+
+**4. `verify()` semantics.** Optional. If present, knowless calls it
+once at factory construction (synchronously awaited before `knowless()`
+resolves). Throwing aborts startup; resolving with any value is success.
+Knowless does not call `verify()` again on a per-send basis. Hosts
+whose transports can fail-after-warm-up should monitor independently.
+
+**5. `close()` lifecycle.** Optional. Knowless does not call it on
+normal operation. Hosts that wire it up are responsible for calling it
+on their own shutdown path. Knowless guarantees `close()` is safe to
+call multiple times after the auth instance has stopped issuing sends.
+
 ## Architecture
 
 ```
@@ -568,11 +654,13 @@ rate-limits) belongs above the library.
    philosophy. If you can't run Postfix, knowless isn't your
    library.
 
-3. **`shamRecipient` MUST be discarded by your MTA.** Default
-   is `null@knowless.invalid`. If your MTA tries to deliver it,
-   it'll bounce against an `.invalid` TLD that never resolves —
-   noise in your mail logs, wasted DNS lookups. Add the
-   `transport_maps` entry per Postfix snippet above.
+3. **`shamRecipient` MUST be discarded without external delivery.**
+   Default is `null@knowless.invalid`. With the default
+   localhost-SMTP mailer, add the `transport_maps` entry per Postfix
+   snippet above. With a custom injected mailer, call
+   `dropShamRecipient(envelope)` and no-op the send; forgetting this
+   bounces sham mail and reopens the enumeration oracle. See §
+   "Custom mailer contract".
 
 4. **Cookie domain defaults to baseUrl's hostname.** This is the
    *narrow* default; for SSO across subdomains (forward-auth
@@ -603,8 +691,10 @@ rate-limits) belongs above the library.
    default encoding picks base64 or QP for plain ASCII bodies,
    breaking the magic-link URL with QP soft-breaks (the v0.11
    POC finding). We sidestep by composing the message ourselves
-   and using nodemailer only for SMTP. If you swap mailers, your
-   replacement must handle this OR keep emitting raw RFC822.
+   and using nodemailer only for SMTP. If you inject a custom
+   mailer, ship the body byte-for-byte — no QP re-encoding, no
+   soft-break wrapping, no charset transcoding. See § "Custom
+   mailer contract" obligation 3.
 
 10. **No JavaScript in any HTML page.** The login form, the
     confirmation page, error pages — all static HTML5. Works in
