@@ -12,6 +12,12 @@ Versioning is [SemVer](https://semver.org/).
   auth+mail layer. ~1,150 LOC of bespoke auth/mail code removed,
   ~35 LOC of knowless wiring added (~33× reduction). Drove audit
   findings AF-7 → AF-17 across v0.1.5–v0.1.10.
+- **2026-05-02 — Three adopters in production.** plato (Mode B,
+  forum) and gitdone (Mode A, multi-party email workflows) joined
+  addypin (Mode A, location sharing). gitdone's pre-merge review
+  surfaced the "wrong-shape integration" failure mode (parallel
+  tokens table + manual session minting alongside knowless instead
+  of `auth.startLogin`). Patched docs in v1.1.1; no API change.
 
 ## [Unreleased]
 
@@ -23,6 +29,32 @@ v1.0.0 are:
 - Bug fixes that don't change the API surface
 - Documentation corrections
 - Helper exports that pull existing mechanism back into the library
+
+## [1.1.1] — 2026-05-02
+
+Documentation-only release. Adds the wrong-shape-integration
+anti-pattern callout that gitdone's pre-merge review surfaced, and
+records plato + gitdone as the second and third production adopters.
+No code changes.
+
+### Documented
+
+- `README.md` — replaced "Sibling projects" with an "Adopters"
+  section explicitly listing addypin (Mode A), plato (Mode B), and
+  gitdone (Mode A) with a pointer that addypin and gitdone are the
+  Mode A worked references.
+- `GUIDE.md` § "Two adoption modes" — added an anti-pattern callout
+  at the top: if you're considering writing pending rows to a
+  custom tokens table or minting your own confirmation links, that's
+  Mode A and `auth.startLogin({ subjectOverride, bodyOverride })`
+  already does it. Includes a side-by-side wrong-shape vs Mode A
+  sketch. Surfaced by gitdone's pre-merge review where a parallel
+  activation system was built before the existing Mode A flow was
+  noticed.
+- `GUIDE.md` Mode A/B sub-headings — appended the API entrypoint
+  (`auth.startLogin` for Mode A, `auth.login` for Mode B) so the
+  use-case leads and `startLogin` doesn't read as "login button
+  click."
 
 ## [1.1.0] — 2026-05-02
 

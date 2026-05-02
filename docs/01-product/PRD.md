@@ -10,6 +10,13 @@
 > of knowless wiring added (~33× reduction). The integration drove
 > 11 audit findings (AF-7 → AF-17) all shipped in v0.1.5–v0.1.10.
 > See §17.3 for the closed backlog.
+>
+> **Three adopters in production (2026-05-02):** addypin (Mode A),
+> plato (Mode B, forum), gitdone (Mode A, multi-party email
+> workflows). gitdone's pre-merge review surfaced the wrong-shape
+> integration failure mode (parallel tokens table built alongside
+> knowless instead of using `auth.startLogin`); patched into the
+> GUIDE anti-pattern callout in v1.1.1, no API change.
 
 > **For future Claude:** This PRD is the canonical source of truth
 > for what `knowless` is and what it isn't. Section 16 captures
@@ -584,8 +591,10 @@ parent-domain scoped.
 ### 6.2 30-day post-launch criteria
 
 - [x] At least one external service has integrated and provided
-      feedback (library mode) — **addypin shipped on knowless,
-      drove AF-7 → AF-17**
+      feedback (library mode) — **three adopters now: addypin
+      (Mode A, drove AF-7 → AF-17), plato (Mode B, forum),
+      gitdone (Mode A, drove the v1.1.1 wrong-shape-integration
+      anti-pattern callout)**
 - [ ] At least one external self-hoster has deployed
       `knowless-server` for a real service (standalone mode) —
       pending. Originally expected to be accelerated by a turnkey

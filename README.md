@@ -148,12 +148,21 @@ rate-limits) belong above the library — patterns in
 Full detail in [`knowless.context.md`](knowless.context.md) §
 "Threat model summary."
 
-## Sibling projects
+## Adopters
 
-- [`addypin`](https://github.com/hamr0/addypin) — location sharing,
-  first knowless adopter
-- [`gitdone`](https://github.com/hamr0/gitdone) — verified email
-  actions via DKIM/SPF inbound
+Production users of knowless, in adoption order:
+
+- [`addypin`](https://github.com/hamr0/addypin) — pin-drop location
+  sharing. First knowless adopter; Mode A (drop-pin-then-confirm).
+- [`plato`](https://github.com/hamr0/plato) — forum (Reddit-shaped,
+  one fingerprint per site). Mode B (sign-in-then-do).
+- [`gitdone`](https://github.com/hamr0/gitdone) — multi-party email
+  workflows verified via DKIM/SPF inbound. Mode A
+  (start-workflow-then-confirm).
+
+If you're picking knowless up: the addypin and gitdone callsites are
+both Mode A and good worked references for the use-first / claim-later
+shape.
 
 ## License
 

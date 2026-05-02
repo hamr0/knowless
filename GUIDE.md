@@ -286,7 +286,31 @@ both out of the box; pick per-action, not per-app — they coexist.
 The Mode A/B labels are used here and in the CHANGELOG so
 discussions across the docs stay unambiguous.
 
-**Mode B — "sign in, then do the thing" (register-first, the default).**
+> ⚠ **Stop before you build a parallel activation system.** If
+> you're considering writing pending rows to a custom tokens table,
+> minting your own confirmation links, or calling into the sessions
+> table directly to mark an account "activated by email" — that is
+> Mode A, and it's already in this library. Use
+> `auth.startLogin({ email, subjectOverride, bodyOverride })` and
+> promote your pending resource in the callback handler. The
+> wrong-shape integration is what every adopter has tried first; the
+> right shape is the worked example below.
+
+The wrong shape vs Mode A, side by side:
+
+```
+WRONG SHAPE                         MODE A (use auth.startLogin)
+─────────────────────────────       ─────────────────────────────
+your_tokens table                   (none — knowless owns the token)
+your custom email composer          subjectOverride + bodyOverride
+your /confirm/:token handler        auth.callback (already mounted)
+manual session insert               handled by callback
+your duplicate rate-limit code      knowless rate-limit applies
+                                    sham-work + timing equivalence
+                                    preserved automatically
+```
+
+**Mode B — "sign in, then do the thing" (register-first, the default, `auth.login`).**
 User must log in before performing the action. Wire `auth.login` /
 `auth.callback` as above; gate your action with
 `auth.handleFromRequest(req)`. Use when the action requires a session
@@ -301,7 +325,7 @@ app.post('/api/comments', (req, res) => {
 });
 ```
 
-**Mode A — "do the thing, confirm by email" (use-first, claim-later).**
+**Mode A — "do the thing, confirm by email" (use-first, claim-later, `auth.startLogin`).**
 User performs the action without logging in; you capture their email
 and trigger a magic link. Clicking it opens a session and your
 callback handler "promotes" the deferred resource. Use for "drop a
