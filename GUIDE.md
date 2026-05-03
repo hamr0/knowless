@@ -384,12 +384,25 @@ and `startLogin` would compute. The bare `deriveHandle` re-export
 takes pre-normalized input; use the instance method unless you
 have a specific reason to call the lower-level primitive.
 
-> **Mode-A heads-up: set `failureRedirect`.** If you only mount
-> `auth.callback` (not `auth.loginForm`), the default
-> `failureRedirect` cascade points at `/login` — a route you
-> don't serve. An expired or replayed magic-link click will 302
-> to a 404. Set `failureRedirect: '/'` (or any route you do
-> serve) when wiring Mode A.
+> **Set `failureRedirect: '/'` — it's part of the silent-miss
+> contract, not just a UX knob.** The default falls back to
+> `loginPath` (typically `/login`). That's a partial enumeration
+> leak: `POST /login` goes to significant lengths to make
+> valid/invalid/rate-limited submissions indistinguishable
+> (timing equivalence, sham tokens, sham-recipient mailing,
+> identical response shapes) — but if a user clicks a sham or
+> expired magic link and lands on a "Sign in" page, they
+> immediately know the link was rejected, defeating the work the
+> POST stage did. The leak-free landing is the same page any
+> logged-out visitor sees on first arrival — usually `/`. Mode-A
+> adopters have an extra reason: the default `failureRedirect`
+> cascade points at `/login`, a route Mode A doesn't serve, so
+> expired/replayed clicks 302 to a 404. Reference: plato wraps
+> knowless with `failureRedirect: '/'` for this reason.
+> Adopters who genuinely want a "try again" UX after failure
+> can opt in explicitly with `failureRedirect: cfg.loginPath`,
+> but understand you're trading the silent-miss guarantee at
+> the link-click stage for that UX.
 
 ### Step 5: Pre-seed users (closed-registration mode, default)
 
@@ -808,7 +821,7 @@ Full options table:
 | `trustedProxies` | no | `['127.0.0.1', '::1']` | IPs allowed to set `X-Forwarded-For`. |
 | `shamRecipient` | no | `null@knowless.invalid` | Where sham mail goes (your MTA must discard it). |
 | `sweepIntervalMs` | no | `300000` | Sweeper tick (5 min default). |
-| `failureRedirect` | no | (= `loginPath`) | Where /auth/callback failures redirect. **Mode-A adopters:** if you don't mount `loginForm`, set this to a route you actually serve (e.g. `/`) — otherwise expired/replayed magic-link clicks 302 to a 404. |
+| `failureRedirect` | no | (= `loginPath`) | Where /auth/callback failures (expired / used / sham / malformed token) redirect. **Set this to `'/'` (or any logged-out landing).** Default falls back to `loginPath`, which is a silent-miss leak: a user who clicks a sham/expired link and lands on a "Sign in" page knows the link was rejected, defeating the anti-enumeration work done at POST /login. Part of the silent-miss contract, not a UX knob. Mode-A adopters who don't mount `loginForm` *also* hit a 404 with the default. Opt back into the "try again" UX by passing `loginPath` explicitly if you understand the trade. |
 | `store` | no | (built-in `node:sqlite`) | Inject your own store implementation. |
 | `mailer` | no | (built-in nodemailer) | Inject your own mailer. |
 

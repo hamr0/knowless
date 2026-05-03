@@ -30,6 +30,38 @@ v1.0.0 are:
 - Documentation corrections
 - Helper exports that pull existing mechanism back into the library
 
+## [1.1.3] — 2026-05-03
+
+Documentation-only release. Surfaces a partial enumeration leak
+in the default `failureRedirect` fallback that previously read as
+"Mode-A only" guidance but actually applies to every adopter.
+POST /login is built to make valid/invalid/rate-limited responses
+indistinguishable (timing equivalence, sham tokens, sham-recipient
+mailing, identical response shapes); the link-click stage extends
+that contract, but the default `failureRedirect` cascade points at
+`loginPath` (typically `/login`) — so a user clicking a sham link
+lands on a "Sign in" page and immediately knows the link was
+rejected, defeating the POST-stage work. plato wraps knowless with
+`failureRedirect: '/'` for exactly this reason. No code changes.
+
+### Documented
+
+- `GUIDE.md` Step-4 callout — replaced the narrow "Mode-A
+  heads-up" with a broader "set `failureRedirect: '/'` — it's
+  part of the silent-miss contract, not just a UX knob"
+  guidance, with the reasoning chain (POST-stage work, link-
+  click extension, leak-free landing) and the explicit opt-in
+  for adopters who want "try again" UX (`failureRedirect:
+  cfg.loginPath`). plato cited as the reference adopter.
+- `GUIDE.md` config-table row for `failureRedirect` —
+  expanded the cell to lead with the silent-miss framing
+  rather than the Mode-A 404 framing.
+- `knowless.context.md` `failureRedirect` comment in the
+  options block — flagged the default as a leak, pointer to
+  the new gotcha.
+- `knowless.context.md` gotcha #20 — full silent-miss
+  contract write-up with the trade-off and reference adopter.
+
 ## [1.1.2] — 2026-05-03
 
 Documentation-only release. Adopters were repeatedly missing that

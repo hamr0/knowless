@@ -114,7 +114,7 @@ const auth = knowless({
   linkPath:   '/auth/callback',
   verifyPath: '/verify',
   logoutPath: '/logout',
-  failureRedirect: null,              // null → loginPath
+  failureRedirect: null,              // null → loginPath (LEAK — set '/'; see gotcha #20)
 
   // --- Mail / SMTP ---
   smtpHost: 'localhost',
@@ -769,6 +769,24 @@ rate-limits) belongs above the library.
     per-event, `onSuppressionWindow` aggregated) — *not* from the
     return shape. Don't wrap `startLogin` in something that surfaces
     the branch to the caller; that re-opens the enumeration oracle.
+
+20. **`failureRedirect` is part of the silent-miss contract.**
+    Default falls back to `loginPath` — a partial enumeration
+    leak. POST /login goes to significant lengths to keep
+    valid/invalid/rate-limited submissions indistinguishable
+    (timing, sham tokens, sham-recipient mailing, identical
+    response shapes), and the link-click stage extends that
+    contract: real tokens issue a session + redirect to
+    `nextUrl`; failures (expired, used, sham, malformed) go to
+    `failureRedirect`. If that's `/login`, a user who clicks a
+    sham link lands on a "Sign in" page and immediately knows
+    the link was rejected — defeating the POST-stage work. Set
+    `failureRedirect: '/'` (or any route a logged-out visitor
+    would see on first arrival) so a sham click is
+    indistinguishable from a never-clicked link. Adopters who
+    genuinely want a "try again" UX after failure opt back in
+    explicitly with `failureRedirect: cfg.loginPath`. plato is
+    the reference adopter for the leak-free wiring.
 
 ## Constraints
 
