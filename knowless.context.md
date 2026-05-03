@@ -699,7 +699,13 @@ rate-limits) belongs above the library.
 10. **No JavaScript in any HTML page.** The login form, the
     confirmation page, error pages — all static HTML5. Works in
     text-mode browsers (Lynx, w3m). Operators wanting branding
-    fork the project.
+    fork the project — **or, more commonly, skip mounting
+    `auth.loginForm` and serve their own `GET /login`**. The
+    fallback is intentionally a contract-minimal renderer, not a
+    UI to ship. `/login` is also where every silent-miss failure
+    redirects (used / expired / sham / malformed token), so it
+    deserves first-class chrome in the host app. See GUIDE.md
+    § "Branding the GET /login page".
 
 11. **Process cleanup matters.** `auth.close()` stops the
     sweeper and closes the SQLite handle. Without it, your

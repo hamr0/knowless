@@ -30,6 +30,30 @@ v1.0.0 are:
 - Documentation corrections
 - Helper exports that pull existing mechanism back into the library
 
+## [1.1.2] — 2026-05-03
+
+Documentation-only release. Adopters were repeatedly missing that
+`auth.loginForm` is an unstyled contract-minimal fallback they
+should override, and that `/login` is also where every silent-miss
+failure (used / expired / sham / malformed token) redirects — so
+the page deserves first-class UI in the host app, not the bundled
+default. No code changes.
+
+### Documented
+
+- `GUIDE.md` FAQ — added section "Branding the GET /login page
+  (you almost certainly want to override it)" with the three
+  reasons (brand consistency, silent-miss redirect target, opt-in
+  fallback) and the override pattern. Extended the existing
+  custom-form contract with `next` validation against
+  `baseUrl` + `cookieDomain` and the optional honeypot field name
+  from `cfg.honeypotFieldName`.
+- `knowless.context.md` gotcha #10 — expanded the "operators
+  wanting branding fork the project" note to surface the more
+  common path (skip mounting `auth.loginForm`, serve your own
+  `GET /login`) and call out that `/login` is the silent-miss
+  redirect target.
+
 ## [1.1.1] — 2026-05-02
 
 Documentation-only release. Adds the wrong-shape-integration

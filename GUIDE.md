@@ -929,7 +929,48 @@ own form, provided it satisfies the handler contract:
   stream itself. A body-parser middleware mounted before `auth.login`
   will silently steal the data (see gotcha #15 in
   [`knowless.context.md`](knowless.context.md)).
-- Optional: include a `next` field for the post-callback redirect URL.
+- Optional: include a `next` field for the post-callback redirect URL
+  (knowless validates `next` against `baseUrl` + `cookieDomain`).
+- Optional but recommended: include the honeypot field using the name
+  from `cfg.honeypotFieldName`.
+
+### Branding the GET /login page (you almost certainly want to override it)
+
+Knowless ships `auth.loginForm(req, res)` as a turnkey fallback so
+adopters can wire `GET /login` in one line and have a working magic-link
+form. The page is intentionally unstyled — it's the contract-minimal
+renderer needed to make the flow demonstrable, not a UI you ship to
+end users. Three reasons most adopters override it:
+
+1. **Brand consistency.** The fallback page has no header, footer, nav,
+   or styling, so users redirected here from elsewhere in your app land
+   on what looks like a different site. That's especially jarring after
+   a sham-token failure (a deliberate part of the silent-miss design —
+   see "Silent miss" in [`knowless.context.md`](knowless.context.md)),
+   where a user clicked a magic link and ended up on a "Sign in" page
+   that looks unrelated to where they started.
+2. **`/login` is load-bearing in the silent-miss contract.** Knowless
+   redirects to `loginPath` on every failure mode that must be
+   indistinguishable from success — used token, expired token, sham
+   token, malformed token. That redirect is correct and required. But
+   it means `/login` is the page users actually land on during
+   anti-enumeration failures, not just the page they navigate to
+   deliberately. It deserves first-class UI in your app.
+3. **`auth.loginForm` is opt-in, not opt-out.** Adopters who never wire
+   the GET route still get a working app — just without a friendly
+   `/login` page. Override it whenever you want your app's chrome on
+   the page. The POST handler can stay as-is (or also be wrapped — for
+   example, plato wraps it for the "we sent a link" confirmation).
+
+Override pattern (mount your own handler instead of `auth.loginForm`):
+
+```js
+app.get('/login', (req, res) => renderMyOwnLogin(req, res));
+app.post('/login', auth.login);  // unchanged
+```
+
+The form just needs to satisfy the contract listed in the previous
+question.
 
 ### How do I add 2FA / WebAuthn / TOTP?
 
