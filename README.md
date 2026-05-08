@@ -9,17 +9,20 @@ npm install knowless
 
 > v1.0.0 (walk-away release) | Node.js >= 22.5 | **1 production dep (nodemailer)** | Apache-2.0
 
-## Where to go next
+## Required reading (before integrating or filing an issue)
 
-Two docs live alongside this README. They serve different readers; pick
-the one that matches yours.
+This README is the front door, not the manual. Most "missing feature"
+questions about knowless turn out to be answered in the docs below —
+hooks that already exist, refusals that are deliberate, operator
+setup steps already documented. **Read these before assuming a gap.**
 
-| You are | Read this | What's there |
-|---|---|---|
-| **A human integrating for the first time** | [`GUIDE.md`](GUIDE.md) | Step-by-step walkthrough — install, generate the secret, set up Postfix, mount handlers, both modes worked end-to-end. Configuration reference, FAQ, troubleshooting. |
-| **An AI agent, or reading in a hurry** | [`knowless.context.md`](knowless.context.md) | Dense single-file reference. Public API table, every option with defaults, 19 gotchas, lifecycle diagrams, the sham-work pattern, threat model, "what's NOT in knowless and why." Designed to fit one context window. |
-| **Deploying to a real server** | [`OPS.md`](OPS.md) | Postfix install, SPF/DKIM/PTR/DMARC, null-route, systemd, Caddy/nginx/Traefik forward-auth, MailHog dev, fail2ban, multi-process. |
-| **Tracking what changed** | [`CHANGELOG.md`](CHANGELOG.md) | Version history. |
+| Read this | Why you need it |
+|---|---|
+| [`GUIDE.md`](GUIDE.md) | Integration walkthrough, **observability hooks** (`onMailerSubmit` / `onTransportFailure` / `onSuppressionWindow`), edge cases, FAQ, troubleshooting. |
+| [`OPS.md`](OPS.md) | Operator setup — Postfix install, **SPF / DKIM / PTR / DMARC at your domain registrar** (§5), null-route, systemd, Caddy/nginx/Traefik forward-auth, MailHog dev, fail2ban. |
+| [`docs/01-product/PRD.md`](docs/01-product/PRD.md) §16 | Why knowless refuses what it refuses. Decisions log — read §16.2 before asking for vendor SMTP, §16.7 before asking for built-in DKIM, §16.12 before asking for a templatable login form. |
+| [`knowless.context.md`](knowless.context.md) | Dense single-file reference for AI agents and quick lookups. Public API table, every option with defaults, 19 gotchas, threat model. Fits one context window. |
+| [`CHANGELOG.md`](CHANGELOG.md) | Version history. |
 
 ## What it does
 
@@ -86,30 +89,71 @@ Worked code for both in [`GUIDE.md`](GUIDE.md).
 | **Library mode** | Mount the five handlers (`login`, `callback`, `verify`, `logout`, `loginForm`) in your existing Node app. |
 | **Standalone server** (`npx knowless-server`) | Forward-auth gateway behind Caddy / nginx / Traefik for self-hosters gating Uptime Kuma / AdGuard / Pi-hole / Sonarr / Jellyfin / etc. One auth subdomain, SSO across services via the parent-domain cookie. |
 
-## What's opinionated (locked by design)
+## What knowless refuses (by design)
 
-Deliberate trade-offs. The library refuses, by API shape, to grow
-into them.
+These are closed doors, not omissions. Don't file feature requests
+for them — the reasoning is locked in
+[`docs/01-product/PRD.md`](docs/01-product/PRD.md) §16. If any
+break your case, knowless isn't the right tool — look at
+[Lucia](https://lucia-auth.com/), [Auth.js](https://authjs.dev/),
+or commercial offerings.
 
 - **Localhost SMTP only.** No Mailgun / Postmark / SES / Resend.
+  Reasoning: PRD §16.2 — vendor relationships invite reusing the
+  mailer for non-auth mail, which collapses the "one mail purpose"
+  invariant.
 - **One mail purpose: the sign-in link.** No `sendNotification()` to
   be tempted by.
 - **Plain-text 7-bit email.** No HTML, no tracking pixels, no
   click-rewriting, no read-receipts.
+- **No DKIM/SPF in the library.** PRD §16.7 — that's the MTA's job;
+  knowless emits clean RFC822 and your Postfix + opendkim signs it.
+  Setup steps in [`OPS.md`](OPS.md) §5.
 - **No OAuth / OIDC / SAML.** Different audience.
 - **No 2FA / WebAuthn / TOTP / passkeys.** Compose with a separate
   library if you need them.
 - **No admin UI.** `sqlite3 knowless.db` is the admin UI.
-- **Hardcoded login form.** No template overrides; fork or live with
-  it.
+- **Hardcoded login form.** No template overrides — PRD §16.12.
+  Fork, override the route entirely, or live with it.
 - **No telemetry, analytics, or error reporting.** No phone-home of
-  any kind.
+  any kind. (Operator-side observability is opt-in via hooks — see
+  below.)
 - **Walks away at v1.0.0.** Maintenance mode after that — only
   security fixes.
 
-If any of those break your case, knowless isn't the right tool. Look
-at [Lucia](https://lucia-auth.com/), [Auth.js](https://authjs.dev/),
-or commercial offerings.
+## Observability (wire it or be silent)
+
+knowless emits **three operator-visibility hooks** on the mail-send
+path. They're the only API for SMTP outcomes — there is no internal
+logging the library does on your behalf beyond an unwired-default
+stderr line on transport failure. If you want metrics, alerting, or
+an admin UI showing send results, you wire these.
+
+```js
+const auth = knowless({
+  secret, baseUrl, from,
+
+  onMailerSubmit: ({ messageId, handle, timestamp }) => {
+    // Real (non-sham) submission succeeded. Safe per-event — fires
+    // ONLY on registered handles, so no enumeration oracle.
+  },
+  onTransportFailure: ({ error, timestamp }) => {
+    // SMTP submission failed. Carries no identity data. Wire to
+    // your alerting / admin "last 10 sends" panel.
+  },
+  onSuppressionWindow: ({ sham, rateLimited, windowMs }) => {
+    // Aggregate counters for the silent-202 branches (sham + rate-
+    // limit hits). Windowed, NOT per-event — per-event would reopen
+    // the enumeration oracle that sham-work exists to prevent.
+  },
+});
+```
+
+Threat-model reasoning for why three hooks (and not a fourth
+per-event sham hook) lives in [`GUIDE.md`](GUIDE.md) Step 8 and
+`knowless.context.md` § "Why three hooks, not four". **Read it
+before logging payloads** — careless aggregation can leak handles
+into log lines.
 
 ## Operator commitments
 

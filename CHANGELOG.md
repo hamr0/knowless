@@ -30,6 +30,58 @@ v1.0.0 are:
 - Documentation corrections
 - Helper exports that pull existing mechanism back into the library
 
+## [1.1.4] — 2026-05-08
+
+Documentation + small bug fix. Adopters (plato, addypin, bareagent,
+bareguard) repeatedly filed feature requests for things knowless
+already shipped (`onTransportFailure` since v0.2.1) or deliberately
+refuses (vendor SMTP, built-in DKIM). Triage showed a single root
+cause: `README.md` under-routed adopters to `GUIDE.md`, `OPS.md`,
+and PRD §16, so adopters read the README and assumed gaps. Pair
+with one bug fix: the legacy `console.error('[knowless] mail submit
+failed:', ...)` in `src/handlers.js` fired alongside
+`onTransportFailure` and actively misled adopters into thinking no
+callback existed.
+
+### Fixed
+
+- `src/handlers.js` — removed the duplicate `console.error` on SMTP
+  submission failure. The `onTransportFailure` hook is now the only
+  reporting path, with the default impl preserving stderr behaviour
+  (see below). Adopters who wired `onTransportFailure` previously
+  saw the same failure logged twice (once via stderr, once via
+  their hook); they now see it once via their hook.
+- `src/index.js` — `onTransportFailure` default changed from a
+  no-op to a stderr printer (`[knowless] mail submit failed:
+  <message>`). Preserves NFR-10 ("SMTP delivery failures MUST be
+  logged") for adopters who don't wire the hook. Adopters who
+  explicitly want silence pass `onTransportFailure: () => {}`.
+  *Behavioural note:* adopters who were relying on the implicit
+  no-op default to suppress stderr will now see lines on transport
+  failure. Pass an explicit no-op to restore prior behaviour.
+
+### Documented
+
+- `README.md` "Where to go next" → "Required reading (before
+  integrating or filing an issue)". Reframed the routing block
+  from an optional menu to required reading, with each linked
+  doc's hook spelled out (hooks live in `GUIDE.md`, registrar
+  setup in `OPS.md` §5, refusal reasoning in PRD §16). Goal:
+  reduce the recurring "missing feature" filings that turn out to
+  be already-shipped or deliberately-refused.
+- `README.md` "What's opinionated (locked by design)" → "What
+  knowless refuses (by design)". Sharper framing — closed doors,
+  not omissions — with PRD §16.2 / §16.7 / §16.12 anchors inline so
+  adopters who want to litigate a refusal land on the reasoning,
+  not the bullet. Added the "No DKIM/SPF in the library" line
+  explicitly (was implicit before; PRD §16.7 reasoning); pointed
+  at `OPS.md` §5 for the operator-side setup.
+- `README.md` new section "Observability (wire it or be silent)" —
+  worked example of the three hooks (`onMailerSubmit`,
+  `onTransportFailure`, `onSuppressionWindow`) with the per-hook
+  threat-model framing. Previously surfaced only in `GUIDE.md`
+  Step 8, which adopters reliably missed.
+
 ## [1.1.3] — 2026-05-03
 
 Documentation-only release. Surfaces a partial enumeration leak

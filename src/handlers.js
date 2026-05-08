@@ -399,10 +399,14 @@ export function createHandlers({ store, mailer, config, events }) {
         });
       }
     } catch (err) {
-      // Per NFR-10: SMTP failure logged, NEVER leaked to response shape.
-      console.error('[knowless] mail submit failed:', err.message);
-      // v0.2.1: per-event hook for SMTP failures. Carries no identity
-      // data, safe per-event. Operator wires this to alerting.
+      // NFR-10: SMTP failure must be reported to the operator but
+      // MUST NOT leak to response shape. Reporting goes through the
+      // onTransportFailure hook only — the default impl (see
+      // index.js safeHook) writes to stderr when the adopter hasn't
+      // wired their own; an adopter who wires the hook owns the
+      // policy. The previous explicit console.error fired alongside
+      // the hook and misled adopters into thinking no callback
+      // existed.
       ev.onTransportFailure({ error: err, timestamp: Date.now() });
       // AF-6.2: dev-mode fallback. When SMTP is unreachable in local
       // development the operator otherwise has no way to obtain the magic

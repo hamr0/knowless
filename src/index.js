@@ -172,7 +172,19 @@ export function knowless(options = {}) {
   let shamCount = 0;
   let rateLimitedCount = 0;
   const onMailerSubmit = safeHook(options.onMailerSubmit, 'onMailerSubmit');
-  const onTransportFailure = safeHook(options.onTransportFailure, 'onTransportFailure');
+  // NFR-10: SMTP failures must be reported to the operator. When the
+  // adopter doesn't wire onTransportFailure, default to a stderr
+  // printer so the unwired case still satisfies NFR-10. Adopters who
+  // want programmatic alerting override; adopters who want silence
+  // pass `() => {}` explicitly.
+  const onTransportFailure = safeHook(
+    options.onTransportFailure ??
+      ((p) =>
+        process.stderr.write(
+          `[knowless] mail submit failed: ${p?.error?.message ?? p?.error ?? 'unknown'}\n`,
+        )),
+    'onTransportFailure',
+  );
   const onSuppressionWindow = safeHook(options.onSuppressionWindow, 'onSuppressionWindow');
 
   const events = {
