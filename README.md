@@ -1,5 +1,10 @@
 # knowless
 
+<p align="center">
+  <img src="https://img.shields.io/github/package-json/v/hamr0/knowless?label=version&color=2a4f8c" alt="version (auto from package.json)">
+  <img src="https://img.shields.io/badge/license-Apache%202.0-2a4f8c" alt="license: Apache 2.0">
+</p>
+
 Small, opinionated, full-stack passwordless auth for Node.js services
 that don't need to email their users for anything but the sign-in link.
 
@@ -7,7 +12,7 @@ that don't need to email their users for anything but the sign-in link.
 npm install knowless
 ```
 
-> v1.0.0 (walk-away release) | Node.js >= 22.5 | **1 production dep (nodemailer)** | Apache-2.0
+> v1.0.0 (walk-away release) | Node.js >= 22.5 | **1 production dep (nodemailer)**
 
 ## What it does
 
