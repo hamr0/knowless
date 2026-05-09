@@ -30,6 +30,47 @@ v1.0.0 are:
 - Documentation corrections
 - Helper exports that pull existing mechanism back into the library
 
+## [1.1.6] — 2026-05-09
+
+Documentation-only release. README was routing adopters into
+internal-only docs (PRD §16) for the "why we refuse X" rationale,
+which collapsed two audiences (adopters reading the README;
+agents/contributors litigating design decisions) into one trail.
+PRD isn't shipped via npm anyway, so npm consumers clicking those
+links got dead repo-relative paths. Restructured the README as a
+self-contained explainer (philosophy → mechanism → modes →
+deployment shapes → refusals → operator commitments → threat model
+→ adopters → going-further footer) and moved the deeper refusal
+rationale into a new repo-root `CLAUDE.md` for future agents
+working on the library. No code changes.
+
+### Documented
+
+- `README.md` — dropped the "Required reading" routing table that
+  pointed adopters at internal docs (PRD, knowless.context.md).
+  Five `PRD §16.x` references in the refusals bullets replaced with
+  inline one-liner reasoning. "Hardcoded login form" bullet now
+  carries a brief inline reason ("templating is a slope") in place
+  of the `PRD §16.12` pointer. Detailed observability code block
+  removed — the philosophy stays as a refusals bullet ("wire it or
+  be silent"), the worked example lives in `GUIDE.md`. Threat model
+  paragraph trimmed (removed trailing `knowless.context.md`
+  pointer). New "Going further" footer at the end pointing at
+  `GUIDE.md`, `OPS.md`, `CHANGELOG.md`. Walk-away bullet now
+  mirrors the four PRD §6.3 carve-outs verbatim.
+- `CLAUDE.md` (new, repo-root, **not shipped via npm**) — agent
+  context with the walk-away doctrine, two-test lens for "should X
+  go in knowless," README-discoverability triage for adopter
+  feature requests, the most-litigated refusals (each with its PRD
+  §16 anchor for long-form reasoning), pointers to PRD / SPEC /
+  TASKS / AGENT_RULES, the decision-revisit protocol, and a
+  condensed code-standards block.
+- `knowless.context.md` — dropped the bare `(PRD §16.2)`
+  parenthetical from the Postfix-on-localhost gotcha. The inline
+  reasoning that follows ("vendor mailers invite 'while we're at
+  it'…") carries the same point without routing readers into a
+  doc that isn't shipped.
+
 ## [1.1.5] — 2026-05-09
 
 Documentation-only release. plato (Mode A adopter) hit a real seam

@@ -649,10 +649,9 @@ rate-limits) belongs above the library.
 
 2. **Postfix on localhost is required.** No remote SMTP, no
    Mailgun / Postmark / SES. The localhost requirement is
-   intentional (PRD §16.2): vendor mailers invite "while we're
-   at it, let's send a welcome email," which contradicts the
-   philosophy. If you can't run Postfix, knowless isn't your
-   library.
+   intentional: vendor mailers invite "while we're at it, let's
+   send a welcome email," which contradicts the philosophy. If
+   you can't run Postfix, knowless isn't your library.
 
 3. **`shamRecipient` MUST be discarded without external delivery.**
    Default is `null@knowless.invalid`. With the default
