@@ -384,6 +384,39 @@ and `startLogin` would compute. The bare `deriveHandle` re-export
 takes pre-normalized input; use the instance method unless you
 have a specific reason to call the lower-level primitive.
 
+> **Composing the "Last sign-in" security signal under
+> `bodyOverride`.** The default last-sign-in line lives in
+> `composeBody` and does **not** auto-append on overridden bodies —
+> override is full-content replacement (handlers.js AF-26). If your
+> override needs the same signal, look up the timestamp before
+> calling `startLogin` and interpolate it yourself. Everything you
+> need is already exported: `auth.deriveHandle(email)` returns the
+> handle, and a parallel read-only `createStore(dbPath)` exposes
+> `getLastLogin(handle)` (Unix ms when the handle exists, `null` for
+> sham / new / opted-out). `upsertLastLogin` only fires on callback
+> consumption, so a pre-call read returns the same value knowless
+> reads internally. Wording stays your responsibility under override —
+> small drift cost for taking the wheel.
+>
+> ```js
+> import { createStore } from 'knowless';
+> const store = createStore(process.env.KNOWLESS_DB_PATH);
+> // ... in your request handler ...
+> const handle = auth.deriveHandle(email);
+> const lastLoginAt = store.getLastLogin(handle); // null for sham/new
+> await auth.startLogin({
+>   email,
+>   bodyOverride: ({ url }) =>
+>     `Click to sign in:\n\n${url}\n\n` +
+>     `This link expires in 15 minutes. If you didn't request this,\n` +
+>     `ignore this email.\n` +
+>     (lastLoginAt != null
+>       ? `\nLast sign-in: ${new Date(lastLoginAt).toISOString()}.\n` +
+>         `If that wasn't you, do not click the link above.\n`
+>       : ''),
+> });
+> ```
+
 > **Set `failureRedirect: '/'` — it's part of the silent-miss
 > contract, not just a UX knob.** The default falls back to
 > `loginPath` (typically `/login`). That's a partial enumeration

@@ -30,6 +30,41 @@ v1.0.0 are:
 - Documentation corrections
 - Helper exports that pull existing mechanism back into the library
 
+## [1.1.5] — 2026-05-09
+
+Documentation-only release. plato (Mode A adopter) hit a real seam
+under `bodyOverride`: they want to reorder the body (expiry warning
+before URL) AND keep the "Last sign-in" security signal. The current
+contract drops the line under override — deliberately, since override
+is full-content replacement — and that read as a missing capability.
+It isn't: `auth.deriveHandle(email)` and a parallel `createStore`
+handle calling `getLastLogin(handle)` already give adopters everything
+they need to compose the signal themselves. The gap was discoverability,
+not surface area. Considered exporting a `formatLastLogin` helper to
+centralize the canonical wording across adopters; held off under the
+walk-away default-no, since the population that hits the
+override + reorder + want-signal intersection is narrow (most
+`bodyOverride` uses are per-call subject branding without a sign-in
+event), and the drift risk for the few who do is small and recoverable.
+Cross-product wording consistency for operators running multiple
+knowless adopters belongs in a shared module on the operator side, not
+in knowless. Revisit if a second independent adopter asks for the
+helper. No code changes.
+
+### Documented
+
+- `GUIDE.md` Mode A walkthrough — added a "Composing the 'Last
+  sign-in' security signal under `bodyOverride`" callout right after
+  the `auth.deriveHandle` paragraph. Explains why the line doesn't
+  auto-append on overridden bodies (override is full-content
+  replacement, AF-26), points at the existing recipe
+  (`auth.deriveHandle` + parallel `createStore` + `getLastLogin`),
+  notes that `upsertLastLogin` only fires on callback consumption so
+  a pre-call read matches what knowless reads internally, and
+  includes a worked example. Targeted at adopters who reorder the
+  body and want the signal back; default-path adopters (no override)
+  are unaffected.
+
 ## [1.1.4] — 2026-05-08
 
 Documentation + small bug fix. Adopters (plato, addypin, bareagent,
