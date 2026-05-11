@@ -79,7 +79,7 @@ relitigate without a fundamentally new argument.**
 
 ## Where deeper rationale lives
 
-- **`docs/01-product/PRD.md` §16 — Decisions log.** 20 entries
+- **`docs/01-product/PRD.md` §16 — Decisions log.** 21 entries
   covering every contested decision. Internal/repo-only — not
   shipped via npm, not linked from `README.md`. Load when triage
   above doesn't resolve a request.

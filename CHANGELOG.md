@@ -30,6 +30,41 @@ v1.0.0 are:
 - Documentation corrections
 - Helper exports that pull existing mechanism back into the library
 
+## [1.1.7] — 2026-05-11
+
+Documentation-only release. Threat-model wording was being read as
+an oversight rather than a principled boundary — adopters kept
+returning to compromised-inbox scenarios because the README didn't
+lead with the load-bearing fact (the inbox is the trust root, by
+construction, in any email-based auth system). Tightened that
+paragraph, recorded the same-browser-binding decision in the §16
+decisions log so it doesn't have to be relitigated, and added a
+fourth entry under `knowless.context.md` § "What's NOT" with a
+~15-line adopter recipe for adopters who genuinely want the
+defense. No code changes.
+
+### Documented
+
+- `README.md` — tightened the threat-model paragraph. Added a
+  leading sentence stating that email-based magic links are
+  exactly as strong as the user's mailbox (the inbox is the
+  trust root, by construction). Promoted "compromised email
+  accounts" to first position in "Does NOT defend against" with
+  a parenthetical explaining the magic link is a bearer token.
+- `knowless.context.md` — added a fourth entry under "What's NOT
+  in knowless, and why": same-browser binding for magic links.
+  Documents why the library refuses to ship the defense
+  (§16.14 threat-model boundary, cross-device UX cost) and
+  provides a ~15-line adopter recipe using the `next_url`
+  round-trip + a state cookie. Mechanism in adopter, no library
+  change.
+- `docs/01-product/PRD.md` §16.21 — recorded the same-browser-
+  binding decision in the §16 decisions log so the doctrine
+  survives the next agent who proposes it. Cross-references
+  §16.14 (honest threat model) as the load-bearing precedent.
+- `CLAUDE.md` — bumped the §16 entry count (20 → 21) so the
+  pointer stays accurate.
+
 ## [1.1.6] — 2026-05-09
 
 Documentation-only release. README was routing adopters into

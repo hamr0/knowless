@@ -562,7 +562,7 @@ URL/email -> handlers.js (login: 12-step sham-work flow per SPEC §7.3)
 
 ## What's NOT in knowless, and why
 
-Three capabilities that look like they belong here but don't, listed
+Four capabilities that look like they belong here but don't, listed
 because the "why not" needs to outlast walk-away-at-v1.0.0. When future
 contributors propose adding any of these back, point them here.
 
@@ -610,6 +610,49 @@ requires JS in the login form (the only zero-JS exception we'd carry),
 ~2s UX delay for legit users on weak devices. If a deployment observes
 per-IP signup actually saturating the cap, Caddy (or another perimeter
 layer) can run hashcash off-the-shelf without making knowless carry it.
+
+### Same-browser binding — adopter / landing route
+
+Refuse the magic-link click unless it lands in the browser that
+requested it. Defends against compromised inboxes (attacker reading
+the mail is by definition in a different browser → click fails).
+
+The library refuses this because §16.14 records inbox compromise as
+out-of-scope, and adding the defense would expand the threat model
+knowless promises. It also breaks legitimate cross-device flows
+(request on phone, click on desktop) that many users rely on. PRD
+§16.21 has the full reasoning.
+
+Adopters who genuinely want it can do it in ~15 lines, no knowless
+change:
+
+```js
+// At /login submission, before forwarding to knowless:
+const bind = crypto.randomBytes(16).toString('hex');
+res.setHeader('Set-Cookie',
+  `app_bind=${bind}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=900`);
+const bindHash = crypto.createHash('sha256').update(bind).digest('hex');
+req.body.next = `${baseUrl}/post-login?b=${bindHash}`;
+// → forward to knowless's loginHandler; next_url round-trips through
+//   the token row and lands at /post-login after consume.
+
+// At /post-login (your route, after knowless set the session cookie):
+const cookieBind = getCookie(req, 'app_bind');
+const expected = req.query.b;
+if (!cookieBind ||
+    crypto.createHash('sha256').update(cookieBind).digest('hex') !== expected) {
+  // Different browser → kill the session knowless just minted.
+  res.setHeader('Set-Cookie', 'knowless_session=; Max-Age=0; Path=/');
+  return res.redirect('/login?error=different_browser');
+}
+res.redirect('/');
+```
+
+Mechanism (cookie + hash round-trip) is generic. Policy (refuse, warn,
+require step-up) is the adopter's call. UX recovery ("click the link
+in the same browser you requested it from") is adopter copy.
+Splitting it this way keeps the knowless contract honest while letting
+adopters who accept the cross-device UX cost have the defense.
 
 ### The deciding lens
 

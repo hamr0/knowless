@@ -2306,6 +2306,72 @@ Only the timing envelope is narrowed.
 about right-sizing the timing test, not loosening the
 philosophy.
 
+### 16.21 Why no same-browser binding for magic links
+
+**Decision:** The library will not bind magic-link consumption to
+the browser that requested it. The magic link remains a bearer
+token: any browser that has the URL can complete the click. An
+adopter recipe for opt-in same-browser binding lives in
+`knowless.context.md` § "What's NOT in knowless, and why".
+
+**Reasoning:** Same-browser binding is a real and narrow defense
+against compromised inboxes — an attacker reading the victim's
+mailbox is by definition in a different browser, so a cookie set at
+`/login` and validated at click time would fail their click. The
+mechanism is cheap (a cookie, a hash, a query-string round-trip via
+`next_url`). It does work. The question is whether knowless should
+ship it.
+
+Three reasons it doesn't:
+
+1. **§16.14 records inbox compromise as out-of-scope.** Adding a
+   defense against an explicitly excluded threat changes what the
+   library promises, not just what it does. Operators who read the
+   threat model and shipped against it would now have a knowless
+   that quietly does more — which is the "vague enterprise-grade
+   security" anti-pattern §16.14 was written to avoid. Threat model
+   changes are bigger than feature changes; they require honest
+   re-announcement, not silent improvement.
+
+2. **It breaks legitimate cross-device flows.** Common patterns
+   that same-browser binding breaks:
+   - Request login on a phone in a queue, click later on a desktop.
+   - Public/shared computer: request from there, click from your
+     own phone because you don't trust the browser (a *security*
+     pattern same-browser binding inverts).
+   - Corporate mail-prefetch (preview servers fetch links from a
+     different host than the user clicks from).
+   - The "email myself a link to read tomorrow" muscle memory
+     users have built over a decade of magic links.
+   All four turn into a confusing "link expired" UX where the real
+   reason is "different browser." This is why most magic-link
+   systems that tried this rolled it back.
+
+3. **Walk-away test fails.** Not a security fix (the threat is
+   recorded as out-of-scope by design, not by oversight), not a
+   bug fix, not docs, not a helper-export. It's a new defense,
+   which means a new option, a new failure mode, and new
+   documentation knowless commits to maintaining through v1.x.
+   Every option carried into v1.0.0 must stay stable through the
+   maintenance window.
+
+The right home is adopter code. The mechanism is generic (cookie +
+sha256 hash + `next_url` round-trip); the policy is per-app (refuse
+hard, warn-and-allow, require step-up); the UX copy is adopter
+voice. Splitting it this way keeps knowless's contract honest while
+letting adopters who accept the cross-device cost have the defense.
+The 15-line recipe in `knowless.context.md` is the entire interface.
+
+This decision was made when the user asked, in the context of a
+plato deployment where their own usage was always same-device
+(mobile→mobile, desktop→desktop), whether knowless could ship the
+defense. The answer is: yes, the mechanism is cheap and the defense
+is real, *and* the policy belongs with the adopter who knows their
+audience's device patterns. If a future adopter shows up whose
+audience genuinely cannot tolerate cross-device flows, that's a
+fork or an adopter-recipe customization, not a library-wide
+default.
+
 ## 17. Audit findings (v0.1 hardening backlog)
 
 > Discovered during the Phase 4-5 self-audit triggered by the

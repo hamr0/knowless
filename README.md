@@ -121,6 +121,10 @@ By choosing knowless, you commit to running:
 
 ## Threat model — one paragraph
 
+Email-based magic links are exactly as strong as the user's mailbox.
+knowless can harden the auth flow; it cannot harden an inbox the user
+has already lost. The list below reflects that boundary.
+
 **Defends well:** DB-only leaks (handles are HMAC-salted),
 plaintext-email exfiltration (none persisted), password reuse (no
 passwords), silent email enumeration via the login form (timing-
@@ -134,10 +138,12 @@ whitelist).
 checks but not session forgery), phishing (no password to type into a
 fake site, but a phished mailbox still receives links).
 
-**Does NOT defend against:** sophisticated bots that bypass the
-honeypot, distributed floods from many IPs, full server compromise,
-compromised email accounts, social engineering, insider threat at
-the operator. Layer-2 defences (Cloudflare, fail2ban, reverse-proxy
+**Does NOT defend against:** compromised email accounts (the magic
+link is a bearer token — anyone who can read the inbox can use it;
+defense lives at the email provider, not in this library),
+sophisticated bots that bypass the honeypot, distributed floods from
+many IPs, full server compromise, social engineering, insider threat
+at the operator. Layer-2 defences (Cloudflare, fail2ban, reverse-proxy
 rate-limits) belong above the library.
 
 ## Adopters
