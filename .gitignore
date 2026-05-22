@@ -1,5 +1,8 @@
-# Local Claude settings — never commit these
+# Local Claude settings & runtime artifacts — never commit these
+# (tracked memory files under .claude/memory/ are deliberately not ignored)
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/stash/
 
 # Node ecosystem
 node_modules/
