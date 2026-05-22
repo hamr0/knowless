@@ -19,7 +19,7 @@ delegate email to a SaaS, knowless is the wrong tool.
   - send outbound TCP/25 (verify before going further — see §3)
   - have a working PTR record for its public IPv4 (and IPv6 if used)
 - A domain with control of its DNS records
-- Node.js ≥ 20 installed
+- Node.js ≥ 22.5 installed (`node:sqlite` requires this floor)
 - A reverse proxy in front of HTTP (Caddy, nginx, or Traefik)
 
 knowless does not handle TLS termination. Your reverse proxy does.
@@ -304,6 +304,20 @@ knowless does not terminate TLS. Your proxy fronts it on `:443`,
 forwards `Host` and `X-Forwarded-For`, and (for forward-auth
 deployments) routes protected upstreams through `/verify`.
 
+**Identity-header trust boundary.** On success `/verify` returns
+`200` with `X-User-Handle: <handle>`. The proxy copies that header
+onto the request it forwards to the protected upstream, and the
+upstream trusts it as the authenticated identity. This only holds if
+the value the upstream sees is the one knowless set — so the proxy
+**must overwrite (or strip) any client-supplied `X-User-Handle`**, never
+merely append to it. The recipes below do this (`proxy_set_header` in
+nginx replaces; `copy_headers` / `authResponseHeaders` replace from
+the auth response). If you adapt them, confirm a request sent with a
+forged `X-User-Handle:` header reaches the upstream with the value
+*replaced*, not duplicated — a duplicate the upstream reads first is a
+full impersonation bypass. Defense in depth: have the upstream reject
+the header from any source other than the proxy.
+
 ### 7.1 Caddy
 
 ```caddy
@@ -315,7 +329,7 @@ auth.example.com {
 kuma.example.com {
     forward_auth 127.0.0.1:8080 {
         uri /verify
-        copy_headers X-Knowless-Handle
+        copy_headers X-User-Handle
     }
     reverse_proxy 127.0.0.1:3001
 }
@@ -363,8 +377,8 @@ server {
 
     location / {
         auth_request /_knowless_verify;
-        auth_request_set $handle $upstream_http_x_knowless_handle;
-        proxy_set_header X-Knowless-Handle $handle;
+        auth_request_set $handle $upstream_http_x_user_handle;
+        proxy_set_header X-User-Handle $handle;
         proxy_pass http://127.0.0.1:3001;
     }
 }
@@ -379,7 +393,7 @@ http:
     knowless:
       forwardAuth:
         address: "http://127.0.0.1:8080/verify"
-        authResponseHeaders: [ "X-Knowless-Handle" ]
+        authResponseHeaders: [ "X-User-Handle" ]
 
   routers:
     auth:

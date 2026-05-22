@@ -483,6 +483,18 @@ which requires the operator secret.
 [Caddy verifies cookie via /verify, proxies to Uptime Kuma]
 ```
 
+**Identity-header trust boundary.** `/verify` returns `200` +
+`X-User-Handle: <handle>` on success; the proxy copies that header
+onto the request forwarded to the protected upstream. The header is
+trustworthy *only* because the proxy sets it from the `/verify`
+response — so your proxy config must **overwrite or strip any
+client-supplied `X-User-Handle`**, never append. nginx
+`proxy_set_header`, Caddy `copy_headers`, and Traefik
+`authResponseHeaders` all replace; if you hand-roll a config, confirm
+a request carrying a forged `X-User-Handle:` reaches the upstream with
+the value replaced (not duplicated), and have the upstream reject the
+header from any source but the proxy. Exact recipes: `OPS.md` §7.
+
 ## Custom mailer contract
 
 When you inject `options.mailer`, knowless hands off five obligations.
@@ -832,7 +844,7 @@ rate-limits) belongs above the library.
 
 ## Constraints
 
-- **Node 20+** -- targeting LTS; tested on Node 22
+- **Node 22.5+** -- `node:sqlite` (`DatabaseSync`) floor; tested on Node 22
 - **Plain ES modules** -- no TypeScript source, no build step;
   ships JSDoc + (eventual) `.d.ts`
 - **One production dep** -- `nodemailer` (SMTP submission). Storage

@@ -30,6 +30,45 @@ v1.0.0 are:
 - Documentation corrections
 - Helper exports that pull existing mechanism back into the library
 
+## [1.1.8] — 2026-05-22
+
+Documentation-only release. A security review found the forward-auth
+proxy recipes told operators to copy an identity header
+(`X-Knowless-Handle`) that knowless never sets — the handler, SPEC
+§9.2, the `knowless.context.md` API table, and the integration test
+all use `X-User-Handle`. The recipes were the lone outliers. Effect
+in a real deployment: the verified handle never reaches the upstream
+(broken identity propagation), and because the auth response carries
+no header to copy, a client-supplied `X-User-Handle` is not
+overwritten by the recipe — depending on the proxy's copy semantics
+that is an impersonation path. Corrected the recipes to the canonical
+name and documented the trust boundary so the class can't silently
+reopen. No code changes; the public contract (`X-User-Handle`) was
+already correct and stays unchanged.
+
+### Fixed
+
+- `OPS.md` §7, `GUIDE.md` §forward-auth — corrected the identity
+  header in every Caddy / nginx / Traefik recipe from
+  `X-Knowless-Handle` to `X-User-Handle` (6 references, including the
+  nginx `$upstream_http_x_user_handle` variable). Now matches
+  `src/handlers.js`, `docs/02-design/SPEC.md` §9.2, and the
+  `knowless.context.md` API table.
+
+### Documented
+
+- `OPS.md` §7, `knowless.context.md` § "Forward-auth" — added an
+  "Identity-header trust boundary" note: the proxy must overwrite or
+  strip any client-supplied `X-User-Handle` (never append), and the
+  upstream should reject the header from any source but the proxy.
+  This is the load-bearing forward-auth invariant; making it explicit
+  guards against a future name drift re-introducing the gap.
+- `OPS.md` §1, `docs/01-product/PRD.md` §10.1 — corrected the runtime
+  floor from "Node.js ≥ 20" to "≥ 22.5". The `node:sqlite`
+  (`DatabaseSync`) import hard-crashes below 22.5; `engines.node`,
+  README, `knowless.context.md`, GUIDE, and PRD §16.4 already stated
+  22.5, so §10.1 and the OPS prerequisite were the stale outliers.
+
 ## [1.1.7] — 2026-05-11
 
 Documentation-only release. Threat-model wording was being read as

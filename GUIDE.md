@@ -799,7 +799,7 @@ auth.example.com {
 kuma.example.com {
     forward_auth localhost:8080 {
         uri /verify
-        copy_headers X-Knowless-Handle
+        copy_headers X-User-Handle
     }
     reverse_proxy localhost:3001  # Uptime Kuma
 }
@@ -807,7 +807,7 @@ kuma.example.com {
 adguard.example.com {
     forward_auth localhost:8080 {
         uri /verify
-        copy_headers X-Knowless-Handle
+        copy_headers X-User-Handle
     }
     reverse_proxy localhost:3000  # AdGuard Home
 }

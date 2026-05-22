@@ -1380,7 +1380,7 @@ The complete stack, consolidated for one-glance reference.
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Runtime | Node.js ≥ 20 | LTS until April 2026; widens homeserver audience; modern crypto; SEA support |
+| Runtime | Node.js ≥ 22.5 | `node:sqlite` (`DatabaseSync`) floor — see §16.4; modern crypto; SEA support |
 | Language | Plain JavaScript (ESM) | No TypeScript source; JSDoc + shipped `.d.ts` |
 | Module system | ESM only | `"type": "module"` in package.json |
 | Build step | None | Code that ships is code that runs |
