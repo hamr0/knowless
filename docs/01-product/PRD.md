@@ -2372,6 +2372,51 @@ audience genuinely cannot tolerate cross-device flows, that's a
 fork or an adopter-recipe customization, not a library-wide
 default.
 
+### 16.22 Why `from` is validated for wire-safety, not address validity
+
+**Decision:** `createMailer` rejects `from` values containing `<`, `>`,
+or CR/LF at startup (v1.1.9), but does not otherwise validate that
+`from` is a well-formed email address. A display-name form like
+`Name <addr>` is rejected with a message pointing to `fromName`;
+RFC-legal oddities (quoted local parts, bare-hostname senders such as
+`auth@localhost`) are accepted and left to the MTA.
+
+**Reasoning:** Two addresses flow through knowless and they have
+different sources of truth:
+
+- **Recipient (`to`)** is user-typed and must be a real, deliverable
+  internet address. `normalize()` (`src/handle.js`) validates it against
+  a strict ASCII subset — no quoted locals, no IP-literal domains, no
+  IDN — and the magic-link round-trip is the final proof of
+  deliverability. That is the "carry the basics for adopters" case, and
+  knowless carries it.
+
+- **Sender (`from`)** is operator config, set once, and its valid shape
+  is defined by the operator's own MTA, not the public internet. The
+  strict recipient regex would wrongly reject legitimate localhost
+  senders (`auth@localhost` fails it). knowless cannot know what the MTA
+  will accept as `MAIL FROM`, so it guards only the characters that
+  corrupt *its own* output — `<>` (which broke the Message-ID domain via
+  `split('@').pop()`, and whose display-name use is `fromName`'s job per
+  AF-27) and CR/LF (header injection; `composeRaw` re-checks defensively
+  on every submit) — and defers address shape to the MTA.
+
+The line is: **validate the invariants knowless's own machinery depends
+on; do not become an RFC address validator.** A `"` filter was
+considered and rejected — a quoted local part (`"x"@host`) is RFC-legal,
+so rejecting it would be over-reach with a real (if rare) false-positive,
+where `<>` / CR/LF have none. General address hygiene is policy that
+lives with the operator's MTA — the same mechanism-vs-policy seam as
+§16.8.
+
+This was triggered by plato (and RackNerd, same config shape) setting
+`KNOWLESS_FROM` to a display-format string (`terribic
+<auth@terribic.com>`), which slipped past the old non-empty-ASCII check
+and rendered a malformed Message-ID (`<uuid@terribic.com>>`). The fix
+fails fast at startup; the contract ("`from` is bare; display name →
+`fromName`") was already documented since v0.2.3, so the real gap was
+enforcement, not surface.
+
 ## 17. Audit findings (v0.1 hardening backlog)
 
 > Discovered during the Phase 4-5 self-audit triggered by the

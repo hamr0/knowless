@@ -19,8 +19,9 @@ Versioning is [SemVer](https://semver.org/).
   tokens table + manual session minting alongside knowless instead
   of `auth.startLogin`). Patched docs in v1.1.1; no API change.
 
-## [Unreleased]
+## Maintenance policy
 
+This is not a release queue — there is no unreleased work pending.
 Walk-away is active. Per PRD §6.3, the only changes that ship after
 v1.0.0 are:
 
@@ -71,6 +72,19 @@ unnoticed. The fix fails fast at startup, mirroring the existing
   used since v0.2.3 (AF-27); it also resolves the malformed Message-ID
   immediately and works on the currently-installed version without
   waiting for this release.
+
+### Documented
+
+- `knowless.context.md` — the inline `from` config comment now states
+  outright that `from` must be a bare address (display name →
+  `fromName`, never `Name <addr>`), the exact mistake that produced
+  this bug. The contract was documented since v0.2.3, but not at the
+  spot adopters copy from.
+- `docs/01-product/PRD.md` §16.22 — recorded the decision: `from` is
+  validated for wire-safety (`<>`, CR/LF), not address validity. Sender
+  shape is the MTA's job; recipient validity is `normalize()` + the
+  magic-link round-trip. Keeps the boundary (and the rejected `"`
+  filter) from being relitigated.
 
 ## [1.1.8] — 2026-05-22
 

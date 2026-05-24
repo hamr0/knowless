@@ -88,7 +88,10 @@ const auth = knowless({
   secret: '...',                      // 64-char hex; HMAC + cookie sig key
   baseUrl: 'https://app.example.com', // base for magic-link URL construction
   from: 'auth@app.example.com',       // bare RFC 5321 sender (envelope MAIL FROM
-                                      //   AND default From: header value)
+                                      //   AND default From: header value). MUST be
+                                      //   bare — never `Name <addr>`; put the display
+                                      //   name in fromName. Rejected at startup if it
+                                      //   contains < > or CR/LF (v1.1.9).
 
   // --- Optional sender display name (AF-27, v0.2.3) ---
   fromName: 'addypin',                // optional. When set, From: header is
