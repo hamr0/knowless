@@ -30,6 +30,48 @@ v1.0.0 are:
 - Documentation corrections
 - Helper exports that pull existing mechanism back into the library
 
+## [1.1.9] — 2026-05-24
+
+Small bug fix. plato (and RackNerd, same config shape) set
+`KNOWLESS_FROM` to a display-format string — `terribic
+<auth@terribic.com>` — but `from` is documented as the bare RFC 5321
+address, with the display name belonging in `fromName` (AF-27).
+`createMailer` validated that `from` was non-empty ASCII but never
+that it was bare, so the display form slipped through and corrupted
+every place that assumes a bare address: the Message-ID domain
+(`split('@').pop()` kept the trailing `>`, rendering
+`<uuid@terribic.com>>`) and the SMTP envelope MAIL FROM (which only
+delivered because nodemailer's address parser leniently extracts the
+address). The From: header rendered correctly, which is why it went
+unnoticed. The fix fails fast at startup, mirroring the existing
+`fromName` angle-bracket rejection.
+
+### Fixed
+
+- `src/mailer.js` — `createMailer` now validates that `from` is a bare
+  address at startup, rejecting `<` / `>` (with a message pointing to
+  `fromName`) and CR/LF — the characters that can never appear in a
+  legitimate bare sender and that knowless's own handling assumes
+  absent. Applied at startup so a misconfigured sender fails fast at
+  boot instead of at first send (CR/LF was previously caught only at
+  submit-time by `composeRaw`, which still re-checks it defensively).
+  Enforces the documented bare-address contract across the Message-ID,
+  the From: header, and the envelope MAIL FROM in one place, rather than
+  emitting a malformed Message-ID and relying on nodemailer leniency for
+  the envelope. Deliberately not a full address validator — a quoted
+  local part (RFC-legal) stays the operator's responsibility. The
+  narrower bracket-strip patch (derive the domain from the stripped
+  address) was rejected: it would fix the cosmetic Message-ID symptom
+  but leave the envelope contract violation masked.
+  *Behavioural note:* adopters passing a display-format `from` (e.g.
+  `Name <addr>`) and relying on it working by accident will now fail
+  at `createMailer` / startup. Fix: pass the bare address as `from`
+  and the display name as `fromName` (`from: 'auth@terribic.com',
+  fromName: 'terribic'`). This is the config that should have been
+  used since v0.2.3 (AF-27); it also resolves the malformed Message-ID
+  immediately and works on the currently-installed version without
+  waiting for this release.
+
 ## [1.1.8] — 2026-05-22
 
 Documentation-only release. A security review found the forward-auth

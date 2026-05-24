@@ -167,6 +167,61 @@ test('mailer: rejects CR/LF in to/from/subject — header-injection defense (clo
   mailer.close();
 });
 
+test('createMailer: from must be a bare address — rejects <>/CRLF at startup', () => {
+  // `from` is the bare RFC 5321 address; the display name belongs in
+  // fromName. A non-bare value corrupts the Message-ID domain
+  // (split('@').pop() keeps the trailing '>'), the From: header, and the
+  // SMTP envelope MAIL FROM. createMailer rejects the characters that can
+  // never appear in a legitimate bare sender — < > and CR/LF — at startup,
+  // so misconfig fails fast. (Not a full address validator: a quoted local
+  // part is left to the operator's MTA.)
+  assert.throws(
+    () =>
+      createMailer({
+        from: 'terribic <auth@terribic.com>',
+        transportOverride: captureTransport(),
+      }),
+    /bare address/,
+  );
+  // CR/LF now fails fast at startup (previously only caught at submit-time
+  // by composeRaw). Still defended there too — this is the earlier gate.
+  assert.throws(
+    () =>
+      createMailer({
+        from: 'auth@x.com\r\nBcc: evil@evil.com',
+        transportOverride: captureTransport(),
+      }),
+    /CR\/LF/,
+  );
+  // The bare form (with the display name in fromName) is still accepted.
+  const ok = createMailer({
+    from: 'auth@terribic.com',
+    fromName: 'terribic',
+    transportOverride: captureTransport(),
+  });
+  ok.close();
+});
+
+test('mailer: Message-ID domain is clean with fromName set (no stray bracket)', async () => {
+  const transport = captureTransport();
+  const mailer = createMailer({
+    from: 'auth@terribic.com',
+    fromName: 'terribic',
+    transportOverride: transport,
+  });
+  const info = await mailer.submit({
+    to: 'alice@example.com',
+    subject: 'Sign in',
+    body: 'plain ascii',
+  });
+  const wire = info.message.toString();
+  assert.match(wire, /^From: terribic <auth@terribic\.com>$/m);
+  // Message-ID domain is the bare domain — no trailing '>' leak.
+  assert.match(wire, /^Message-ID: <[0-9a-f-]+@terribic\.com>$/m);
+  assert.equal(/@terribic\.com>>/.test(wire), false, 'no doubled bracket');
+  mailer.close();
+});
+
 // --- AF-8.2: bodyFooter ---
 
 test('validateBodyFooter: null/empty/undefined → null', () => {

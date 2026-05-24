@@ -305,6 +305,29 @@ export function createMailer(cfg) {
     throw new Error('mailer: from is required');
   }
   if (!ASCII_RE.test(from)) throw new Error('mailer: from must be ASCII');
+  // `from` is the bare RFC 5321 address (composeRaw's contract). It feeds
+  // three places that all assume bare form: the Message-ID domain
+  // (split('@').pop()), the From: header (bare, or `name <from>` when
+  // fromName is set), and the SMTP envelope MAIL FROM. A display-format
+  // value like `Name <addr>` silently corrupts all three — the Message-ID
+  // domain becomes `domain>`, and the envelope only delivers because
+  // nodemailer leniently extracts the address. The display name belongs in
+  // fromName (AF-27). Reject only the characters that can never appear in a
+  // legitimate bare sender and that knowless's own handling assumes absent
+  // — < > and CR/LF — and fail here at startup so a misconfigured sender
+  // surfaces at boot, not at first login. CR/LF is also re-checked
+  // defensively by composeRaw on every submit. Deliberately NOT a full
+  // address validator: a quoted local part (`"x"@host`) is RFC-legal and
+  // left to the operator's MTA — knowless guards its own invariants, not
+  // general RFC hygiene.
+  if (/[\r\n]/.test(from)) {
+    throw new Error('mailer: from must not contain CR/LF (header-injection defense)');
+  }
+  if (/[<>]/.test(from)) {
+    throw new Error(
+      'mailer: from must be a bare address, not "Name <addr>" — pass the display name via fromName',
+    );
+  }
   // AF-27: validate display name at startup; fail-fast.
   const validatedFromName = validateFromName(fromName);
 
