@@ -11,6 +11,10 @@ permissions:
   contents: read
   id-token: write           # required: lets npm mint OIDC credentials
 
+concurrency:                # never let two publish runs race
+  group: npm-publish
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -28,5 +32,18 @@ jobs:
         run: npm run lint
       - name: Test
         run: npm test
+      - name: Skip if this version is already on npm
+        id: check
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          PUBLISHED=$(npm view "$NAME@$VERSION" version 2>/dev/null || true)
+          if [ -n "$PUBLISHED" ]; then
+            echo "::notice::$NAME@$VERSION already published — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish
-        run: npm publish
+        if: steps.check.outputs.skip == 'false'
+        run: npm publish --provenance --access public
