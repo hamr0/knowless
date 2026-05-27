@@ -31,6 +31,28 @@ v1.0.0 are:
 - Documentation corrections
 - Helper exports that pull existing mechanism back into the library
 
+## [Unreleased]
+
+Documentation only — no code change, no version bump. Staged to ride
+along with the next release.
+
+plato asked whether magic-link emails could carry rules in non-English
+Unicode. The answer is no, but the recorded reasoning for the ASCII-only
+body only covered encoding/deliverability (FR-17). The load-bearing
+reason is anti-spoofing — captured now so it is not re-discovered from
+scratch.
+
+### Documented
+
+- `docs/01-product/PRD.md` §16.23 — recorded why the email body is
+  ASCII-only as a security invariant, not just an encoding choice.
+  7-bit ASCII kills bidi/RTL override (U+202E), homoglyph/confusable
+  spoofing (Cyrillic а vs Latin a), and zero-width injection in the most
+  attack-sensitive email knowless sends. Allowing Unicode would force
+  rebuilding bidi handling, normalization, a confusables policy, and
+  zero-width stripping in the auth path, to free only the operator
+  footer paragraph. Subject to the §16 decision-revisit protocol.
+
 ## [1.1.9] — 2026-05-24
 
 Small bug fix. plato (and RackNerd, same config shape) set

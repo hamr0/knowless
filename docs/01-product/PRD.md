@@ -2417,6 +2417,55 @@ fails fast at startup; the contract ("`from` is bare; display name →
 `fromName`") was already documented since v0.2.3, so the real gap was
 enforcement, not surface.
 
+### 16.23 Why the email body is ASCII-only (anti-spoofing, not just encoding)
+
+**Decision:** The rendered mail body MUST be 7-bit ASCII (no
+characters above 0x7F), validated on output — including
+operator-overridden subjects and bodies (FR-17). Non-ASCII / Unicode
+bodies are not supported. This sits behind the same locked boundary
+as §16.2 (no vendor SMTP) and the unsupported `transportOverride`.
+
+**Reasoning:** The encoding rationale recorded at FR-17 (7bit avoids
+quoted-printable URL line-wrapping and base64's deliverability hit) is
+real but secondary. The load-bearing reason is **anti-spoofing.** A
+magic-link email's entire security model is "trust this one link, and
+nothing around it can lie about where it goes." ASCII-only output is a
+clean, auditable invariant that kills three classes of *visual*
+spoofing at once, for free:
+
+- **Bidi/RTL override** (U+202E and friends) — can visually reorder
+  text so the displayed URL or sender differs from the real bytes.
+- **Homoglyph/confusable spoofing** — Cyrillic а vs Latin a, etc. —
+  makes a link look like a domain it isn't.
+- **Invisible/zero-width injection** around the URL line — hides
+  injected content.
+
+Allowing Unicode is not "just turn on UTF-8." It reverses a defended
+posture: to stay safe you would have to rebuild bidi handling, Unicode
+normalization, a confusables policy, and zero-width stripping — *in the
+most attack-sensitive email the service sends.* That is the expensive
+part, not the encoding (the encoding is one nodemailer config line).
+
+And the payoff is small. Un-gating Unicode only frees the
+operator-overridable footer/rules paragraph; the rest of the body
+("This link expires in 15 minutes. If you didn't request this…") is
+English boilerplate. So you would get, e.g., Arabic rules in an
+otherwise-English email — the "island problem," relocated, not solved.
+
+The honest verdict: **not hard to encode, expensive to do safely, low
+payoff.** ASCII is the restricted, *safe* set; allowing non-ASCII is
+what opens the gate. Restricting to ASCII keeps it shut. And to be
+precise about which gate: it is spoofing/phishing (the real risk), not
+spam — plain 7-bit text scores marginally cleaner with filters, but
+modern mail handles UTF-8 fine, so that is a side benefit, not the
+reason. Do not lean on it.
+
+This was prompted by an adopter (plato) asking whether magic-link
+emails could carry rules in non-English Unicode. Recorded per the §16
+decision-revisit protocol: the request reverses a security invariant,
+so it does not clear the bar without a new argument that defeats the
+spoofing concern above — not just "the body is easy to encode."
+
 ## 17. Audit findings (v0.1 hardening backlog)
 
 > Discovered during the Phase 4-5 self-audit triggered by the

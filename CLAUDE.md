@@ -76,6 +76,11 @@ relitigate without a fundamentally new argument.**
   job (Caddy / Cloudflare).
 - **HTML email / tracking pixels / click-rewriting** — PRD §16.17.
   Deliverability + privacy + simplicity converge on plain text.
+- **Unicode / non-ASCII email body** — PRD §16.23. ASCII-only is an
+  anti-spoofing invariant (kills bidi/RTL override, homoglyphs,
+  zero-width injection), not just an encoding choice. Allowing Unicode
+  reverses a defended posture in the auth path to free only the footer.
+  "Easy to encode" is not a new argument.
 
 ## Where deeper rationale lives
 
