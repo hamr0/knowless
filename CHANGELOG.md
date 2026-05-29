@@ -31,11 +31,11 @@ v1.0.0 are:
 - Documentation corrections
 - Helper exports that pull existing mechanism back into the library
 
-## [Unreleased]
+## [1.2.0] — 2026-05-29
 
-Staged for the next release — a minor (additive types; no API change, no
-runtime change). Two threads: shipping generated TypeScript declarations,
-and a documentation clarification on the ASCII-only email body.
+A minor release — additive types; no API change, no runtime change. Two
+threads: shipping generated TypeScript declarations, and a documentation
+clarification on the ASCII-only email body.
 
 ### Added
 
@@ -1388,5 +1388,5 @@ Two primary audiences (PRD §4):
 
 Apache 2.0 with NOTICE preservation. See `LICENSE` and `NOTICE`.
 
-[Unreleased]: https://github.com/hamr0/knowless/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/hamr0/knowless/compare/v1.2.0...HEAD
 [0.1.0]: https://github.com/hamr0/knowless/releases/tag/v0.1.0

@@ -852,8 +852,8 @@ rate-limits) belongs above the library.
 ## Constraints
 
 - **Node 22.5+** -- `node:sqlite` (`DatabaseSync`) floor; tested on Node 22
-- **Plain ES modules** -- no TypeScript source, no build step;
-  ships JSDoc + (eventual) `.d.ts`
+- **Plain ES modules** -- no TypeScript source, no build step for the
+  shipped `.js`; ships JSDoc + generated `.d.ts` (built on publish)
 - **One production dep** -- `nodemailer` (SMTP submission). Storage
   uses `node:sqlite` (stdlib, no native compile). No second runtime
   dep without revisiting
