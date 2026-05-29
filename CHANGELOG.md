@@ -5,6 +5,11 @@ All notable changes to `knowless` are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning is [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **`publish.yml` is now manual-only (`workflow_dispatch`) — npm OIDC trusted publishing with provenance, idempotent, and verifies the registry end-state.**
+
 ## Milestones
 
 - **2026-04-28 — First customer integration shipped.** addypin
