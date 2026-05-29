@@ -38,12 +38,17 @@ const DEFAULTS = {
 /**
  * Read a request body up to maxBytes. Returns the UTF-8 string.
  * Resolves with '' if the request never sent any data and ended.
+ *
+ * @param {import('./types.js').KnowlessHttpRequest} req
+ * @param {number} [maxBytes]
+ * @returns {Promise<string>}
  */
 function readBody(req, maxBytes = 65_536) {
   return new Promise((resolve, reject) => {
     let total = 0;
+    /** @type {Buffer[]} */
     const chunks = [];
-    req.on('data', (c) => {
+    req.on('data', (/** @type {Buffer} */ c) => {
       total += c.length;
       if (total > maxBytes) {
         req.destroy(new Error('body too large'));
@@ -57,8 +62,17 @@ function readBody(req, maxBytes = 65_536) {
   });
 }
 
+/**
+ * Parse a raw request body string by Content-Type into a flat object.
+ * Returns {} for anything other than JSON / urlencoded, or on parse error.
+ *
+ * @param {string} raw
+ * @param {string | string[] | undefined} contentType
+ * @returns {Record<string, unknown>}
+ */
 function parseBody(raw, contentType) {
-  const ct = (contentType || '').split(';')[0].trim().toLowerCase();
+  const ctHeader = Array.isArray(contentType) ? contentType[0] : contentType;
+  const ct = (ctHeader || '').split(';')[0].trim().toLowerCase();
   if (ct === 'application/json') {
     try {
       const parsed = JSON.parse(raw);
@@ -73,9 +87,19 @@ function parseBody(raw, contentType) {
   return {};
 }
 
+/**
+ * Read a single cookie value from the request Cookie header. Takes only
+ * the header surface (not the full request) so the public
+ * handleFromRequest — documented as accepting `{ headers?: { cookie? } }`
+ * — can call it without satisfying the streaming request shape.
+ *
+ * @param {{ headers?: { cookie?: string | string[] } }} req
+ * @param {string} name
+ * @returns {string | null}
+ */
 function getCookie(req, name) {
   const header = req.headers?.cookie;
-  if (!header) return null;
+  if (typeof header !== 'string' || !header) return null;
   for (const part of header.split(';')) {
     const trimmed = part.trim();
     const eq = trimmed.indexOf('=');
@@ -98,6 +122,10 @@ function getCookie(req, name) {
  *
  * Origin is preferred when both are present (it's harder to spoof and
  * more reliably set by browsers on POST).
+ *
+ * @param {import('./types.js').KnowlessHttpRequest} req
+ * @param {string} cookieDomain
+ * @returns {boolean}
  */
 function validateOrigin(req, cookieDomain) {
   const origin = req.headers?.origin;
@@ -141,6 +169,10 @@ export function validateNextUrl(rawNext, baseUrl, cookieDomain) {
   return null;
 }
 
+/**
+ * @param {string} sid base64url session id
+ * @returns {string} 64-char lowercase hex
+ */
 function sidHashOf(sid) {
   return crypto.createHash('sha256').update(Buffer.from(sid, 'base64url')).digest('hex');
 }
@@ -150,16 +182,22 @@ function sidHashOf(sid) {
  * (req, res) => Promise<void> | void, where req/res match node:http.
  *
  * @param {object} args
- * @param {object} args.store    knowless store (from createStore)
- * @param {object} args.mailer   knowless mailer (from createMailer)
- * @param {object} args.config   merged config; see DEFAULTS for missing keys
+ * @param {import('./types.js').KnowlessStore} args.store    knowless store (from createStore)
+ * @param {import('./types.js').KnowlessMailer} args.mailer   knowless mailer (from createMailer)
+ * @param {Partial<import('./types.js').KnowlessConfig> & Record<string, unknown>} args.config   merged config; see DEFAULTS for missing keys
+ * @param {import('./types.js').HandlerEvents} [args.events] optional v0.2.1 operator-visibility hooks
+ *   ({shamHit, rateLimitHit, onMailerSubmit, onTransportFailure}); the factory
+ *   passes a fully-populated object, direct callers may omit it
  * @returns {{
  *   login: (req:any,res:any)=>Promise<void>,
  *   callback: (req:any,res:any)=>Promise<void>,
  *   verify: (req:any,res:any)=>void,
  *   logout: (req:any,res:any)=>Promise<void>,
  *   loginForm: (req:any,res:any)=>void,
- *   validateNextUrl: (raw:string)=>string|null
+ *   handleFromRequest: (req:any)=>(string|null),
+ *   startLogin: (args?: {email?: string, nextUrl?: string|null, sourceIp?: string, subjectOverride?: string, bodyOverride?: (arg: {url: string}) => string, bypassRateLimit?: boolean}) => Promise<{handle: string|null, submitted: boolean}>,
+ *   validateNextUrl: (raw:string)=>string|null,
+ *   _config: object
  * }}
  */
 export function createHandlers({ store, mailer, config, events }) {
@@ -176,7 +214,13 @@ export function createHandlers({ store, mailer, config, events }) {
     onTransportFailure: events?.onTransportFailure ?? noop,
   };
 
-  const cfg = { ...DEFAULTS, ...config };
+  // DEFAULTS supplies every optional key; secret/baseUrl/from are required
+  // and validated immediately below, and cookieDomain is derived from
+  // baseUrl when absent — so the merged object satisfies KnowlessConfig
+  // once the guards just below have run. The cast documents that contract.
+  const cfg = /** @type {import('./types.js').KnowlessConfig} */ (
+    { ...DEFAULTS, ...config }
+  );
   if (!cfg.secret) throw new Error('config.secret required');
   if (typeof cfg.secret !== 'string' || cfg.secret.length < 64) {
     throw new Error('config.secret must be ≥64 hex chars (32 bytes)');
@@ -213,6 +257,11 @@ export function createHandlers({ store, mailer, config, events }) {
   const secureAttr = cfg.cookieSecure ? '; Secure' : '';
   const setCookieAttrs = `Domain=${cfg.cookieDomain}; Path=/; HttpOnly; SameSite=Lax`;
 
+  /**
+   * @param {import('./types.js').KnowlessHttpResponse} res
+   * @param {string} [echoedEmail]
+   * @param {string|null} [next]
+   */
   function sameResponse(res, echoedEmail, next) {
     const html = renderLoginForm({
       loginPath: cfg.loginPath,
@@ -227,6 +276,7 @@ export function createHandlers({ store, mailer, config, events }) {
     res.end(html);
   }
 
+  /** @param {import('./types.js').KnowlessHttpResponse} res */
   function failureRedirect(res) {
     res.statusCode = 302;
     res.setHeader('Location', cfg.failureRedirect ?? cfg.loginPath);
@@ -248,6 +298,15 @@ export function createHandlers({ store, mailer, config, events }) {
    * Both entries run steps 1, 3, 4–12 identically — so the timing-
    * equivalence guarantee (FR-6) holds for either.
    *
+   * @param {object} args
+   * @param {string} args.emailRaw           raw email as supplied by the caller
+   * @param {string|null|undefined} [args.nextRaw]  raw `next` redirect target
+   * @param {string} [args.sourceIp]         peer IP for per-IP rate limiting
+   * @param {string} [args.subject]          per-call subject override (AF-9)
+   * @param {(arg: {url: string}) => string} [args.bodyOverride]  per-call body
+   *   override callback; receives the composed magic-link URL, returns body text
+   *   (AF-26)
+   * @param {boolean} [args.bypassRateLimit] skip per-IP rate limit (AF-10)
    * @returns {Promise<{handle: string|null, isSham: boolean,
    *                    emailNorm: string, nextValidated: string|null}>}
    *   handle is null when the email failed to normalize (programmer bug
@@ -257,7 +316,7 @@ export function createHandlers({ store, mailer, config, events }) {
   async function runSendLink({
     emailRaw,
     nextRaw,
-    sourceIp,
+    sourceIp = '',
     subject,
     bodyOverride,
     bypassRateLimit = false,
@@ -436,6 +495,10 @@ export function createHandlers({ store, mailer, config, events }) {
     return { handle, isSham, emailNorm, nextValidated };
   }
 
+  /**
+   * @param {import('./types.js').KnowlessHttpRequest} req
+   * @param {import('./types.js').KnowlessHttpResponse} res
+   */
   async function login(req, res) {
     // Step 0 — Origin / Referer validation (SPEC §7.3 Step 0, AF-4.3).
     if (!validateOrigin(req, cfg.cookieDomain)) {
@@ -460,10 +523,10 @@ export function createHandlers({ store, mailer, config, events }) {
         warnEmptyBodyOnce();
       }
     }
-    const body = parseBody(raw, req.headers['content-type']);
+    const body = parseBody(raw, req.headers?.['content-type']);
     const emailRaw = typeof body.email === 'string' ? body.email : '';
     const honeypot = body[cfg.honeypotFieldName];
-    const nextRaw = body.next;
+    const nextRaw = typeof body.next === 'string' ? body.next : null;
 
     // Step 2: honeypot — exempt short-circuit (no sham work)
     if (typeof honeypot === 'string' && honeypot.length > 0) {
@@ -476,6 +539,23 @@ export function createHandlers({ store, mailer, config, events }) {
     sameResponse(res, result.emailNorm, result.nextValidated ?? '');
   }
 
+  /**
+   * Programmatic login entry (SPEC §7.3a). Mints + sends a magic link for
+   * a trusted server-side caller (CLI, cron, worker), skipping the form-only
+   * Origin/honeypot steps. Same sham work + FR-6 timing equivalence as POST
+   * /login.
+   *
+   * @param {object} [args]
+   * @param {string} [args.email]                email to send the link to;
+   *   required at runtime (throws if missing or empty)
+   * @param {string|null} [args.nextUrl]         post-login redirect target
+   * @param {string} [args.sourceIp]             peer IP for per-IP rate limiting
+   * @param {string} [args.subjectOverride]      per-call subject override (AF-9)
+   * @param {(arg: {url: string}) => string} [args.bodyOverride]  per-call body
+   *   override callback; receives the composed magic-link URL (AF-26)
+   * @param {boolean} [args.bypassRateLimit]     skip per-IP rate limit (AF-10)
+   * @returns {Promise<{handle: string|null, submitted: boolean}>}
+   */
   async function startLogin({
     email,
     nextUrl,
@@ -530,8 +610,12 @@ export function createHandlers({ store, mailer, config, events }) {
     return { handle, submitted: true };
   }
 
+  /**
+   * @param {import('./types.js').KnowlessHttpRequest} req
+   * @param {import('./types.js').KnowlessHttpResponse} res
+   */
   async function callback(req, res) {
-    const url = new URL(req.url, cfg.baseUrl);
+    const url = new URL(req.url ?? '/', cfg.baseUrl);
     const rawToken = url.searchParams.get('t');
     const hash = hashToken(rawToken);
     if (!hash) {
@@ -577,7 +661,7 @@ export function createHandlers({ store, mailer, config, events }) {
    * mismatch, expired session, no row). Recommended integration
    * point for in-process middleware. Closes AF-2.8.
    *
-   * @param {{ headers?: { cookie?: string } }} req
+   * @param {{ headers?: { cookie?: string | string[] } }} req
    * @returns {string | null}
    */
   function handleFromRequest(req) {
@@ -590,6 +674,10 @@ export function createHandlers({ store, mailer, config, events }) {
     return row.handle;
   }
 
+  /**
+   * @param {import('./types.js').KnowlessHttpRequest} req
+   * @param {import('./types.js').KnowlessHttpResponse} res
+   */
   function verify(req, res) {
     const handle = handleFromRequest(req);
     if (!handle) {
@@ -602,6 +690,10 @@ export function createHandlers({ store, mailer, config, events }) {
     res.end();
   }
 
+  /**
+   * @param {import('./types.js').KnowlessHttpRequest} req
+   * @param {import('./types.js').KnowlessHttpResponse} res
+   */
   async function logout(req, res) {
     // CSRF defense — same Origin/Referer check as POST /login (AF-4.3).
     // Without this, a third-party page can force-logout a victim. Closes
@@ -625,6 +717,10 @@ export function createHandlers({ store, mailer, config, events }) {
     res.end();
   }
 
+  /**
+   * @param {import('./types.js').KnowlessHttpRequest} req
+   * @param {import('./types.js').KnowlessHttpResponse} res
+   */
   function loginForm(req, res) {
     const url = new URL(req.url || '/', cfg.baseUrl);
     const next = url.searchParams.get('next');

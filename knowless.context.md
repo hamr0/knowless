@@ -1,7 +1,7 @@
 # knowless -- Integration Guide
 
 > For AI assistants and developers wiring knowless into a project.
-> v1.0.0 (walk-away release) | Node.js >= 22.5 | 1 dep (nodemailer) | Apache-2.0
+> v1.0.0 (walk-away release) | Node.js >= 22.5 | 1 dep (nodemailer) | TypeScript types bundled | Apache-2.0
 
 ## What this is
 
@@ -15,6 +15,10 @@ platform.
 ```
 npm install knowless
 ```
+
+Ships TypeScript declarations generated from the source JSDoc — adopters get
+autocomplete and compile-time checking on the full public API with no extra
+install. (Pure JS internally; no build step.)
 
 Two integration paths:
 

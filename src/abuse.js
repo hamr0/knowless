@@ -15,8 +15,14 @@ import net from 'node:net';
  * @returns {{ has: (ip: string) => boolean }}
  */
 export function buildTrustedPeers(trustedProxies) {
-  if (trustedProxies && typeof trustedProxies.check === 'function') {
-    return { has: (ip) => safeBlockListCheck(trustedProxies, ip) };
+  if (
+    trustedProxies &&
+    typeof (/** @type {net.BlockList} */ (trustedProxies)).check === 'function'
+  ) {
+    return {
+      has: (ip) =>
+        safeBlockListCheck(/** @type {net.BlockList} */ (trustedProxies), ip),
+    };
   }
   const list = Array.isArray(trustedProxies)
     ? trustedProxies
@@ -46,6 +52,11 @@ export function buildTrustedPeers(trustedProxies) {
   };
 }
 
+/**
+ * @param {net.BlockList} block
+ * @param {string} ip
+ * @returns {boolean}
+ */
 function safeBlockListCheck(block, ip) {
   if (typeof ip !== 'string' || ip.length === 0) return false;
   const family = net.isIPv6(ip) ? 'ipv6' : net.isIPv4(ip) ? 'ipv4' : null;
@@ -67,11 +78,7 @@ function safeBlockListCheck(block, ip) {
  *
  * `trustedProxies` accepts plain IPs and CIDR ranges (AF-6.3).
  *
- * @param {{
- *   socket?: { remoteAddress?: string },
- *   connection?: { remoteAddress?: string },
- *   headers?: Record<string, string|string[]|undefined>
- * }} req a node:http request (or shape-compatible)
+ * @param {import('./types.js').KnowlessHttpRequest} req a node:http request (or shape-compatible)
  * @param {Set<string>|string[]|net.BlockList} trustedProxies trusted peer IPs / CIDRs
  * @returns {string} the determined IP, or '' if undeterminable
  */
@@ -109,7 +116,7 @@ export function windowStart(now, windowMs) {
  * Check whether the given (scope, key) has exceeded `limit` events in the
  * current window.
  *
- * @param {object} store knowless store
+ * @param {import('./types.js').KnowlessStore} store knowless store
  * @param {string} scope e.g. 'login_ip'
  * @param {string} key the value being limited (IP, handle hex)
  * @param {number} limit threshold; if 0, the check is disabled (returns false)
@@ -127,7 +134,7 @@ export function rateLimitExceeded(store, scope, key, limit, windowMs, now = Date
  * Increment the counter for (scope, key) in the current window. Returns the
  * new count.
  *
- * @param {object} store
+ * @param {import('./types.js').KnowlessStore} store
  * @param {string} scope
  * @param {string} key
  * @param {number} windowMs

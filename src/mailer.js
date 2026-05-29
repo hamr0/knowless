@@ -13,7 +13,7 @@ const ASCII_RE = /^[\x00-\x7f]*$/;
  *
  * @param {object} args
  * @param {string} args.from               bare RFC 5321 MAIL FROM address
- * @param {string} [args.fromName]         optional RFC 5322 display name
+ * @param {string|null} [args.fromName]    optional RFC 5322 display name
  *   (AF-27). When set, the From: header is `name <addr>`; when null/
  *   undefined, the From: header is the bare `addr`. envelope.from
  *   (caller-side) always uses the bare address.
@@ -296,8 +296,8 @@ export function validateSubject(subject) {
  *   sender stays bare. Validated by validateFromName() at startup.
  * @param {string} [cfg.smtpHost='localhost']
  * @param {number} [cfg.smtpPort=25]
- * @param {object} [cfg.transportOverride] for tests
- * @returns {{ submit(args: {to:string, subject:string, body:string}): Promise<any>, verify(): Promise<true>, close(): void }}
+ * @param {import('./types.js').KnowlessMailTransport} [cfg.transportOverride] for tests
+ * @returns {import('./types.js').KnowlessMailer}
  */
 export function createMailer(cfg) {
   const { from, fromName, smtpHost = 'localhost', smtpPort = 25, transportOverride } = cfg;

@@ -18,14 +18,19 @@ const REQUIRED_FIELDS = ['secret', 'baseUrl', 'from'];
  * Wrap a user-supplied hook so its errors are caught and swallowed.
  * Matches the `onSweepError` contract: knowless never crashes because
  * an operator's observability sink threw.
+ *
+ * @param {Function | undefined} fn  the operator hook (any payload shape)
+ * @param {string} label  hook name used in the error log
+ * @returns {(arg: any) => void}
  */
 function safeHook(fn, label) {
   if (typeof fn !== 'function') return () => {};
-  return (arg) => {
+  return (/** @type {any} */ arg) => {
     try {
       fn(arg);
     } catch (err) {
-      console.error(`[knowless] ${label} hook threw:`, err?.message ?? err);
+      const msg = err instanceof Error ? err.message : err;
+      console.error(`[knowless] ${label} hook threw:`, msg);
     }
   };
 }
@@ -42,6 +47,12 @@ function safeHook(fn, label) {
  *   <noreply@addypin.com>`); SMTP envelope sender stays bare.
  *   Validated at factory startup (ASCII, ≤60 chars, no CR/LF/<>).
  * @property {string} [dbPath='./knowless.db']
+ * @property {boolean} [cookieSecure=true]  Set false ONLY for
+ *   http://localhost development; emits a startup warning. Never deploy
+ *   with this false. SPEC §5.4.
+ * @property {string} [bodyFooter]    Operator-supplied plain-text footer
+ *   appended to the email body. Validated at startup: ASCII-only,
+ *   anti-spoofing invariant (AF-8.2, PRD §16.23).
  * @property {string} [cookieDomain]   Defaults to baseUrl's hostname.
  * @property {number} [tokenTtlSeconds=900]
  * @property {number} [sessionTtlSeconds=2592000]
@@ -77,9 +88,13 @@ function safeHook(fn, label) {
  *   Errors swallowed.
  * @property {number} [suppressionWindowMs=60000]  v0.2.1. Cadence of
  *   `onSuppressionWindow` emissions. Default 60 seconds.
- * @property {object} [store]              Inject your own store implementation.
- * @property {object} [mailer]             Inject your own mailer.
- * @property {object} [transportOverride]  Pass to nodemailer.createTransport (tests).
+ * @property {import('./types.js').KnowlessStore} [store]   Inject your own store implementation.
+ * @property {import('./types.js').KnowlessMailer} [mailer]  Inject your own mailer.
+ * @property {import('./types.js').KnowlessMailTransport} [transportOverride]  Pass to nodemailer.createTransport (tests).
+ * @property {string} [dbPath]
+ * @property {string} [smtpHost]
+ * @property {number} [smtpPort]
+ * @property {string} [fromName]
  */
 
 /**
@@ -107,16 +122,23 @@ function safeHook(fn, label) {
  *   handleFromRequest: (req: any) => string | null,
  *   deleteHandle: (handle: string) => void,
  *   revokeSessions: (handle: string) => number,
- *   startLogin: (args: object) => Promise<{handle: string|null, submitted: true}>,
+ *   startLogin: (args: object) => Promise<{handle: string|null, submitted: boolean}>,
  *   deriveHandle: (email: string) => string,
  *   verifyTransport: () => Promise<true>,
  *   config: object,
+ *   _sweep: () => void,
  *   close: () => void,
  * }}
  */
-export function knowless(options = {}) {
+export function knowless(options = /** @type {KnowlessOptions} */ ({})) {
+  // Typed record view for the dynamic-key validation loops below. The
+  // real option surface is KnowlessOptions; these loops iterate string
+  // literals, so a Record<string, unknown> view is accurate.
+  const opt = /** @type {Record<string, unknown>} */ (
+    /** @type {unknown} */ (options)
+  );
   for (const f of REQUIRED_FIELDS) {
-    if (!options[f]) throw new Error(`knowless: ${f} is required`);
+    if (!opt[f]) throw new Error(`knowless: ${f} is required`);
   }
   if (typeof options.secret !== 'string' || !/^[a-f0-9]{64,}$/i.test(options.secret)) {
     throw new Error('knowless: secret must be at least 64 hex chars (32 bytes, lowercase a-f, 0-9)');
@@ -151,7 +173,7 @@ export function knowless(options = {}) {
   // v0.2.1 operator-visibility hooks. All optional. Validate types up
   // front so a typo is caught at startup, not on the first hit.
   for (const k of ['onMailerSubmit', 'onTransportFailure', 'onSuppressionWindow']) {
-    if (options[k] !== undefined && typeof options[k] !== 'function') {
+    if (opt[k] !== undefined && typeof opt[k] !== 'function') {
       throw new Error(`knowless: ${k} must be a function when provided`);
     }
   }
@@ -179,7 +201,7 @@ export function knowless(options = {}) {
   // pass `() => {}` explicitly.
   const onTransportFailure = safeHook(
     options.onTransportFailure ??
-      ((p) =>
+      ((/** @type {{ error?: { message?: string } }} */ p) =>
         process.stderr.write(
           `[knowless] mail submit failed: ${p?.error?.message ?? p?.error ?? 'unknown'}\n`,
         )),
@@ -224,7 +246,10 @@ export function knowless(options = {}) {
       store.sweepSessions(now);
       store.sweepRateLimits(now - DEFAULT_RATE_LIMIT_RETENTION_MS);
     } catch (err) {
-      console.error('[knowless] sweep failed:', err.message);
+      console.error(
+        '[knowless] sweep failed:',
+        err instanceof Error ? err.message : err,
+      );
       if (typeof onSweepError === 'function') {
         // Hook errors are swallowed — alerting is best-effort and MUST
         // NOT crash the sweep loop. Operator's hook can fail; sweeper
@@ -301,7 +326,7 @@ export function knowless(options = {}) {
  * Pass the same `shamRecipient` you configured the auth instance with,
  * or omit to use the default `null@knowless.invalid`.
  *
- * @param {object} envelope  Object with a `to` field (the recipient address).
+ * @param {{ to?: unknown }} envelope  Object with a `to` field (the recipient address).
  * @param {string} [shamRecipient]  Defaults to `'null@knowless.invalid'`.
  * @returns {boolean}
  */

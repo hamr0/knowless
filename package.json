@@ -4,14 +4,19 @@
   "description": "Small, opinionated, full-stack passwordless auth for Node.js services that don't need to email their users for anything but the sign-in link.",
   "type": "module",
   "main": "./src/index.js",
+  "types": "./types/index.d.ts",
   "exports": {
-    ".": "./src/index.js"
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./src/index.js"
+    }
   },
   "bin": {
     "knowless-server": "./bin/knowless-server"
   },
   "files": [
     "src/",
+    "types/",
     "bin/",
     "config.example.env",
     "LICENSE",
@@ -27,7 +32,10 @@
   },
   "scripts": {
     "test": "node --test 'test/**/*.test.js'",
-    "lint": "find src bin -type f \\( -name '*.js' -o -name 'knowless-server' \\) -exec node --check {} \\;"
+    "lint": "find src bin -type f \\( -name '*.js' -o -name 'knowless-server' \\) -exec node --check {} \\;",
+    "typecheck": "tsc --noEmit",
+    "build:types": "tsc",
+    "prepublishOnly": "npm run build:types"
   },
   "dependencies": {
     "nodemailer": "^8.0.7"
@@ -49,5 +57,9 @@
     "forward-auth",
     "self-hosted",
     "privacy"
-  ]
+  ],
+  "devDependencies": {
+    "@types/node": "^22.19.19",
+    "typescript": "^6.0.3"
+  }
 }

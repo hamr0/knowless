@@ -26,7 +26,7 @@ export function issueToken() {
  * fail). Caller treats null exactly like "no row found" — the silent
  * failure path of verifyToken.
  *
- * @param {string} raw 43-char base64url token from a magic link
+ * @param {string|null|undefined} raw 43-char base64url token from a magic link
  * @returns {string|null} 64-char lowercase hex hash, or null
  */
 export function hashToken(raw) {

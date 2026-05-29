@@ -9,6 +9,11 @@ node_modules/
 *.log
 .DS_Store
 
+# Generated TypeScript declarations — emitted from JSDoc by `npm run build:types`
+# (tsc), shipped to npm via the prepublishOnly hook. Never committed, so no
+# committed artifact can drift from the source JSDoc.
+/types/
+
 # SQLite artifacts (POC + dev)
 *.sqlite
 *.sqlite-journal

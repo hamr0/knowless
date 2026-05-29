@@ -2466,6 +2466,45 @@ decision-revisit protocol: the request reverses a security invariant,
 so it does not clear the bar without a new argument that defeats the
 spoofing concern above — not just "the body is easy to encode."
 
+### 16.24 Why ship generated TypeScript types (and strictNullChecks, not full strict)
+
+**Decision:** Ship `.d.ts` type declarations **generated from the
+existing JSDoc** by `tsc` — never hand-written. The declarations are
+git-ignored and built on publish (`prepublishOnly`), so no committed
+artifact can drift from the source. The typecheck runs `checkJs` +
+`strictNullChecks` (not full `strict`), and CI runs `tsc --noEmit` on
+every push/PR and before publish. This is additive: no API change, no
+runtime change, no production dependency (`typescript` / `@types/node`
+are dev-only). It sits inside walk-away as the "documentation
+corrections" carve-out — types *describe* the existing surface, they
+do not grow it.
+
+**Reasoning:** JSDoc helps whoever reads the source, but it does not
+cross the npm boundary — a consumer's editor ignores `.js` in
+`node_modules`. The shipped `.d.ts` is the only thing that gives
+TypeScript adopters autocomplete and compile-time errors against the
+options bag and handlers. Generating it from the JSDoc (rather than
+hand-writing) keeps a single source of truth: the two cannot disagree,
+and because the `.d.ts` is never committed there is no stale copy to
+drift — CI fails the moment JSDoc and code disagree.
+
+Full `strict` was evaluated and rejected. Measured on this codebase it
+produced 135 findings: 8 genuine null-safety issues (what
+`strictNullChecks` catches) and 126 `noImplicitAny` complaints about
+the deliberately framework-agnostic `(req, res)` handler params. Full
+strict would force typing the entire HTTP-framework surface — high
+churn on a frozen lib — to catch the same 8. `strictNullChecks` keeps
+the safety and drops the noise. This matches the suite-wide standard
+(bareagent reached the same conclusion independently); the full
+rationale and recipe live in the cross-project advisory
+`LIBRARY_CONVENTIONS.md`.
+
+The 8 null-safety findings were real and fixed (behaviour-preserving
+guards, never `!` / `as any` / `@ts-ignore`), as were several JSDoc
+inaccuracies the check exposed (undocumented options `bodyFooter` /
+`cookieSecure`, an incomplete `createHandlers` return shape) — so the
+work doubled as a documentation correction of the existing API.
+
 ## 17. Audit findings (v0.1 hardening backlog)
 
 > Discovered during the Phase 4-5 self-audit triggered by the

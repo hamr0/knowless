@@ -1,0 +1,21 @@
+{
+  "// note": "knowless ships hand-written .js + JSDoc. TYPES TOOLCHAIN ONLY (no app build step): `npm run build:types` emits .d.ts from the JSDoc into ./types (git-ignored, built on publish via prepublishOnly), `npm run typecheck` is the CI gate. `strict` is off because the sources are hand-written JS, not TS; `strictNullChecks` is on — it keeps the genuine null-safety value without the noImplicitAny annotation noise (matches the bareagent/bareguard suite standard, see TYPES_CONVENTION.md).",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationDir": "./types",
+    "rootDir": "./src",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2022",
+    "lib": ["es2023"],
+    "types": ["node"],
+    "skipLibCheck": true,
+    "strict": false,
+    "strictNullChecks": true
+  },
+  "include": ["src/**/*.js"],
+  "exclude": ["types", "node_modules"]
+}

@@ -11,10 +11,10 @@ import { DatabaseSync } from 'node:sqlite';
  * start to serialise concurrent issuance attempts.
  *
  * @param {DatabaseSync} db
- * @param {Function} fn
+ * @param {(...args: any[]) => any} fn
  */
 function makeTransaction(db, fn) {
-  return (...args) => {
+  return (/** @type {any[]} */ ...args) => {
     db.exec('BEGIN IMMEDIATE');
     let result;
     try {
@@ -56,6 +56,21 @@ function assertHexHash(value, name) {
       `store: ${name} must be 64-char lowercase hex (got ${got})`,
     );
   }
+}
+
+/**
+ * Coerce a node:sqlite StatementResultingChanges.changes to a plain number.
+ * node:sqlite types `.changes` as `number | bigint` (bigint only surfaces
+ * when readBigInts is enabled, which knowless never sets), so the runtime
+ * value is always a safe number here. Number() is identity on a number and
+ * a lossless narrowing on the bigint counts knowless produces (row counts);
+ * it keeps the store's documented `number` return contract precise for TS.
+ *
+ * @param {{ changes: number | bigint }} result
+ * @returns {number}
+ */
+function changes(result) {
+  return Number(result.changes);
 }
 
 const DDL = `
@@ -101,7 +116,7 @@ const DDL = `
  * Create a knowless storage backend. SPEC §6 (schema), §13 (interface).
  *
  * @param {string} [dbPath=':memory:'] path to SQLite file, or ':memory:'
- * @returns {Store}
+ * @returns {import('./types.js').KnowlessStore} the storage backend (SPEC §13 interface)
  */
 export function createStore(dbPath = ':memory:') {
   const db = new DatabaseSync(dbPath);
@@ -201,7 +216,8 @@ export function createStore(dbPath = ':memory:') {
     (tokenHash, handle, expiresAt, nextUrl, isSham, maxActive, now) => {
       let evicted = 0;
       if (maxActive > 0) {
-        const { n: count } = stmt.countActiveTokens.get(handle, now);
+        const { n: count } =
+          /** @type {{ n: number }} */ (stmt.countActiveTokens.get(handle, now));
         let toEvict = count - maxActive + 1;
         while (toEvict > 0) {
           stmt.evictOldestActive.run(handle, now);
@@ -268,7 +284,9 @@ export function createStore(dbPath = ':memory:') {
     },
     getToken(tokenHash) {
       assertHexHash(tokenHash, 'tokenHash');
-      const row = stmt.getToken.get(tokenHash);
+      const row = /** @type {{ handle: string, expiresAt: number, usedAt: number|null, nextUrl: string|null, isSham: number } | undefined} */ (
+        stmt.getToken.get(tokenHash)
+      );
       if (!row) return null;
       return {
         handle: row.handle,
@@ -280,18 +298,23 @@ export function createStore(dbPath = ':memory:') {
     },
     markTokenUsed(tokenHash, usedAt) {
       assertHexHash(tokenHash, 'tokenHash');
-      return stmt.markTokenUsed.run(usedAt, tokenHash).changes > 0;
+      return changes(stmt.markTokenUsed.run(usedAt, tokenHash)) > 0;
     },
     countActiveTokens(handle, now = Date.now()) {
       assertHexHash(handle, 'handle');
-      return stmt.countActiveTokens.get(handle, now).n;
+      // get() yields one row from COUNT(*); guarded for null because a
+      // typed row is unknown to TS, though COUNT always returns a row.
+      const row = /** @type {{ n: number } | undefined} */ (
+        stmt.countActiveTokens.get(handle, now)
+      );
+      return row ? row.n : 0;
     },
     evictOldestActiveToken(handle, now = Date.now()) {
       assertHexHash(handle, 'handle');
-      return stmt.evictOldestActive.run(handle, now).changes;
+      return changes(stmt.evictOldestActive.run(handle, now));
     },
     sweepTokens(now = Date.now(), graceMs = DEFAULT_TOKEN_GRACE_MS) {
-      return stmt.sweepTokens.run(now, now - graceMs).changes;
+      return changes(stmt.sweepTokens.run(now, now - graceMs));
     },
 
     // --- Last login ---
@@ -301,7 +324,9 @@ export function createStore(dbPath = ':memory:') {
     },
     getLastLogin(handle) {
       assertHexHash(handle, 'handle');
-      const row = stmt.getLastLogin.get(handle);
+      const row = /** @type {{ lastLoginAt: number|null } | undefined} */ (
+        stmt.getLastLogin.get(handle)
+      );
       return row ? row.lastLoginAt : null;
     },
 
@@ -313,31 +338,40 @@ export function createStore(dbPath = ':memory:') {
     },
     getSession(sidHash) {
       assertHexHash(sidHash, 'sidHash');
-      return stmt.getSession.get(sidHash) ?? null;
+      return /** @type {import('./types.js').SessionRow | undefined} */ (
+        stmt.getSession.get(sidHash)
+      ) ?? null;
     },
     deleteSession(sidHash) {
       assertHexHash(sidHash, 'sidHash');
-      return stmt.deleteSession.run(sidHash).changes > 0;
+      return changes(stmt.deleteSession.run(sidHash)) > 0;
     },
     /** Delete every session for `handle`. Returns rows-deleted. AF-6.1. */
     revokeSessions(handle) {
       assertHexHash(handle, 'handle');
-      return stmt.deleteHandleSessions.run(handle).changes;
+      return changes(stmt.deleteHandleSessions.run(handle));
     },
     sweepSessions(now = Date.now()) {
-      return stmt.sweepSessions.run(now).changes;
+      return changes(stmt.sweepSessions.run(now));
     },
 
     // --- Rate limiting ---
     rateLimitIncrement(scope, key, windowStart) {
-      return stmt.rateLimitIncrement.get(scope, key, windowStart).count;
+      // RETURNING count guarantees exactly one row; guarded because a
+      // typed SQLite row is unknown to TS.
+      const row = /** @type {{ count: number } | undefined} */ (
+        stmt.rateLimitIncrement.get(scope, key, windowStart)
+      );
+      return row ? row.count : 0;
     },
     rateLimitGet(scope, key, windowStart) {
-      const row = stmt.rateLimitGet.get(scope, key, windowStart);
+      const row = /** @type {{ count: number } | undefined} */ (
+        stmt.rateLimitGet.get(scope, key, windowStart)
+      );
       return row ? row.count : 0;
     },
     sweepRateLimits(olderThan) {
-      return stmt.sweepRateLimits.run(olderThan).changes;
+      return changes(stmt.sweepRateLimits.run(olderThan));
     },
 
     // --- Lifecycle ---

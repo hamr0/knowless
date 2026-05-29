@@ -33,17 +33,46 @@ v1.0.0 are:
 
 ## [Unreleased]
 
-Documentation only — no code change, no version bump. Staged to ride
-along with the next release.
+Staged for the next release — a minor (additive types; no API change, no
+runtime change). Two threads: shipping generated TypeScript declarations,
+and a documentation clarification on the ASCII-only email body.
 
-plato asked whether magic-link emails could carry rules in non-English
-Unicode. The answer is no, but the recorded reasoning for the ASCII-only
-body only covered encoding/deliverability (FR-17). The load-bearing
-reason is anti-spoofing — captured now so it is not re-discovered from
-scratch.
+### Added
+
+- **TypeScript declarations (`.d.ts`), generated from JSDoc.** TypeScript
+  adopters now get autocomplete and compile-time errors against the public
+  API — `knowless(options)`, the handlers, and the re-exports — with no
+  extra install. Emitted by `tsc` from the existing JSDoc
+  (`npm run build:types`), git-ignored, and built on publish via
+  `prepublishOnly`; resolved through a top-level `types` field plus a
+  `types` condition on the `.` export. No hand-written types, no production
+  dependency (`typescript` / `@types/node` are dev-only), and no build step
+  for the shipped `.js`. Rationale — including why `strictNullChecks` and
+  not full `strict` — in PRD §16.24; the cross-project recipe is in
+  `LIBRARY_CONVENTIONS.md`.
+
+### Changed
+
+- `src/*.js` — JSDoc completed and corrected so the generated declarations
+  are accurate. The typecheck surfaced and fixed undocumented options
+  (`bodyFooter`, `cookieSecure`) and an incomplete `createHandlers` return
+  shape. Comments only, except a handful of behaviour-preserving null guards
+  (`strictNullChecks`) in `handlers.js` / `store.js` / `mailer.js` — no
+  `!` / `as any` / `@ts-ignore`.
+- `src/types.js` (new) — shared `@typedef` shapes (request / response /
+  store / mailer) the JSDoc references; generates its own declarations.
+
+### Tooling
+
+- `tsconfig.json` (new); `typecheck` / `build:types` / `prepublishOnly`
+  scripts; new `.github/workflows/ci.yml` running lint + typecheck +
+  build:types + tests on push/PR; `publish.yml` gained the typecheck gate
+  so a JSDoc/code mismatch blocks publish. `checkJs` + `strictNullChecks`.
 
 ### Documented
 
+- `docs/01-product/PRD.md` §16.24 — recorded why knowless ships generated
+  types and uses `strictNullChecks`, not full `strict`.
 - `docs/01-product/PRD.md` §16.23 — recorded why the email body is
   ASCII-only as a security invariant, not just an encoding choice.
   7-bit ASCII kills bidi/RTL override (U+202E), homoglyph/confusable
