@@ -357,8 +357,7 @@ server {
         # client-supplied prefix), AND omitting this line entirely (nginx then
         # forwards the client's raw X-Forwarded-For untouched). Either lets an
         # attacker forge the leftmost element and mint a fresh rate-limit bucket
-        # per request. Both verified end-to-end against real nginx. Keep this
-        # line, exactly as $remote_addr.
+        # per request. Keep this line, exactly as $remote_addr.
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
     }

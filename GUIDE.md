@@ -355,7 +355,7 @@ app.post('/api/pins', async (req, res) => {
     // (`$proxy_add_x_forwarded_for`) AND omitting the directive (nginx forwards
     // the client's raw header) leave that element attacker-controlled — each
     // forged value mints a fresh rate-limit bucket and the per-IP cap is
-    // bypassed entirely. Verified end-to-end against real nginx; see OPS.md §7.2.
+    // bypassed entirely. See OPS.md §7.2.
     sourceIp: determineSourceIp(req, auth.config.trustedProxies),
     // Per-call subject so the user can tell at a glance this is a
     // pin-confirmation, not a routine login. AF-9.

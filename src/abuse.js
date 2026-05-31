@@ -69,7 +69,7 @@ function safeBlockListCheck(block, ip) {
 }
 
 /**
- * Determine the source IP of a request per FR-42 and SPEC §7.6.
+ * Determine the source IP of a request per FR-42 and SPEC §7.3a.
  *
  * If the request's connection peer is in `trustedProxies`, honour the
  * `X-Forwarded-For` (first element) or `X-Real-IP` header. Otherwise

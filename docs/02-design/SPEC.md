@@ -536,7 +536,7 @@ Step 3 — Per-IP rate limit on /login (exempt from timing eq.)
   # ($proxy_add_x_forwarded_for) AND omitting the directive (nginx forwards
   # the client's raw header) leave the leftmost element client-controlled —
   # the client then mints a fresh bucket per request and bypasses the cap.
-  # Verified end-to-end against real nginx. See §7.6, OPS §7.2.
+  # Verified end-to-end against real nginx. See §7.3a, OPS §7.2.
   if rateLimitExceeded(ip, scope='login_ip',
                        limit=maxLoginRequestsPerIpPerHour,
                        window=1h):
@@ -693,7 +693,7 @@ proxy, `req.socket.remoteAddress` is the proxy's address — a
 constant — which collapses every caller into one bucket and
 silently disables per-IP limiting. Resolve the real client IP with
 the exported `determineSourceIp(req, cfg.trustedProxies)` (the same
-resolver the built-in `login` route applies per FR-42 / §7.6); only
+resolver the built-in `login` route applies per FR-42 / §7.3); only
 the `login` route does this automatically. The resolver trusts the
 *leftmost* `X-Forwarded-For` element, so the trusted proxy MUST set
 that header to the real peer (`$remote_addr`). Both *appending*
@@ -701,7 +701,7 @@ that header to the real peer (`$remote_addr`). Both *appending*
 forwards the client's raw header) leave the leftmost element
 client-controlled — the client then forges it and mints unlimited
 rate-limit buckets, bypassing the per-IP cap. Verified end-to-end
-against real nginx (§7.6, OPS §7.2).**
+against real nginx (§7.3, OPS §7.2).**
 
 ### 7.4 Sham-mail destination (RESOLUTION OF OPEN QUESTION)
 
