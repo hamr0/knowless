@@ -27,6 +27,14 @@ Versioning is [SemVer](https://semver.org/).
   address. The example now uses `determineSourceIp(req, auth.config.trustedProxies)`,
   and the `startLogin` reference in `knowless.context.md` documents the
   responsibility transfer.
+- **Docs (security hardening):** every `determineSourceIp` recommendation
+  (GUIDE, SPEC §7.3a, `knowless.context.md`) and the OPS §7.2 nginx snippet now
+  state the precondition that the trusted proxy MUST overwrite `X-Forwarded-For`
+  with the real peer (`$remote_addr`), never append (`$proxy_add_x_forwarded_for`).
+  The resolver trusts the leftmost XFF element; under an appending proxy that
+  element is client-controlled, so forged values mint unlimited per-IP buckets
+  and bypass the rate-limit caps. No code change — the resolver is correct under
+  the documented (overwrite) config.
 
 ### Changed
 - **CI:** the publish workflow now polls the npm registry for ~2 min (was ~15s; `--prefer-online` skips npm's view cache) and accepts an `exit 0` publish even if the registry hasn't reflected it yet, so a successful-but-slow-to-reflect publish no longer reports a false failure.

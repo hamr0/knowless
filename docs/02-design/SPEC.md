@@ -687,7 +687,12 @@ constant — which collapses every caller into one bucket and
 silently disables per-IP limiting. Resolve the real client IP with
 the exported `determineSourceIp(req, cfg.trustedProxies)` (the same
 resolver the built-in `login` route applies per FR-42 / §7.6); only
-the `login` route does this automatically.**
+the `login` route does this automatically. The resolver trusts the
+*leftmost* `X-Forwarded-For` element, so the trusted proxy MUST
+overwrite that header with the real peer (`$remote_addr`), never
+append to the client-supplied value — an appending proxy lets a
+client forge the leftmost element and mint unlimited rate-limit
+buckets, bypassing the per-IP cap (§7.6, OPS §7.2).**
 
 ### 7.4 Sham-mail destination (RESOLUTION OF OPEN QUESTION)
 

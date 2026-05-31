@@ -348,6 +348,13 @@ app.post('/api/pins', async (req, res) => {
     // disables your per-IP limits. determineSourceIp reads X-Forwarded-For /
     // X-Real-IP, but only when the peer is in trustedProxies (anti-spoofing).
     // It's the same resolver the built-in `login` route uses internally.
+    //
+    // PRECONDITION — your proxy MUST overwrite X-Forwarded-For with the real
+    // peer (nginx: `proxy_set_header X-Forwarded-For $remote_addr;`), NOT append
+    // to the client-supplied header (`$proxy_add_x_forwarded_for`). This
+    // resolver trusts the *leftmost* element; under an appending proxy that
+    // element is attacker-controlled, so each forged value mints a fresh
+    // rate-limit bucket and the per-IP cap is bypassed entirely. See OPS.md §7.2.
     sourceIp: determineSourceIp(req, auth.config.trustedProxies),
     // Per-call subject so the user can tell at a glance this is a
     // pin-confirmation, not a routine login. AF-9.

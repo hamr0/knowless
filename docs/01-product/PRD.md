@@ -2910,6 +2910,16 @@ eligible per PRD §6.3 (bug fixes that don't change the API surface).
   responsibility transfer; (2) helper export — `determineSourceIp` is now
   public, pulling existing mechanism back into the surface with no behavior
   change (precedent: v1.1.0 `dropShamRecipient`). ✓
+  - **Follow-up (security review of this change):** because the resolver
+    trusts the *leftmost* `X-Forwarded-For` element, it is safe only when the
+    trusted proxy *overwrites* XFF with the real peer (`$remote_addr`), not
+    when it *appends* (`$proxy_add_x_forwarded_for`) — an appending proxy
+    leaves the leftmost element client-controlled, so forged values mint
+    unlimited per-IP buckets and bypass the cap. Stress-tested (14/14: append
+    → attacker-controlled key; overwrite → real peer). The overwrite
+    precondition was added to every `determineSourceIp` recommendation (GUIDE,
+    SPEC §7.3a, `knowless.context.md`) and the OPS §7.2 nginx snippet.
+    Doc-only; the resolver is correct under the documented config. ✓
 
 ### 17.4 Note on FR-6 timing test (AF-1.8)
 
