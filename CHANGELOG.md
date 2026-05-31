@@ -7,6 +7,8 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-05-31
+
 ### Documentation
 - Added symptom-first discoverability for the per-IP / proxy-IP pitfall shipped
   in 1.3.0: a **Troubleshooting** entry in `GUIDE.md` ("per-IP rate limiting
@@ -1434,6 +1436,7 @@ Two primary audiences (PRD §4):
 
 Apache 2.0 with NOTICE preservation. See `LICENSE` and `NOTICE`.
 
-[Unreleased]: https://github.com/hamr0/knowless/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/hamr0/knowless/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/hamr0/knowless/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/hamr0/knowless/compare/v1.2.0...v1.3.0
 [0.1.0]: https://github.com/hamr0/knowless/releases/tag/v0.1.0
