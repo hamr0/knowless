@@ -36,7 +36,8 @@ Versioning is [SemVer](https://semver.org/).
   element client-controlled, so forged values mint unlimited per-IP buckets and
   bypass the rate-limit caps. Both unsafe configs — and the `$remote_addr` fix —
   were verified end-to-end against real nginx. No code change: the resolver is
-  correct under the documented config.
+  correct under the documented config. The README threat-model section now
+  flags that its per-IP defences require the real client IP behind a proxy.
 
 ### Changed
 - **CI:** the publish workflow now polls the npm registry for ~2 min (was ~15s; `--prefer-online` skips npm's view cache) and accepts an `exit 0` publish even if the registry hasn't reflected it yet, so a successful-but-slow-to-reflect publish no longer reports a false failure.

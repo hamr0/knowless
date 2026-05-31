@@ -135,6 +135,11 @@ caps), replay attacks (atomic mark-token-used), open redirects
 (`next_url` whitelist), CSRF on POST endpoints (Origin/Referer
 whitelist).
 
+*The per-IP defences key on the client IP. Behind a reverse proxy you
+must forward the real client IP, or they collapse to a single bucket
+and stop biting per-attacker — see GUIDE (proxies / `startLogin`) and
+OPS (nginx).*
+
 **Partially:** HMAC-secret-only leak (allows targeted existence
 checks but not session forgery), phishing (no password to type into a
 fake site, but a phished mailbox still receives links).
