@@ -2916,10 +2916,16 @@ eligible per PRD §6.3 (bug fixes that don't change the API surface).
     when it *appends* (`$proxy_add_x_forwarded_for`) — an appending proxy
     leaves the leftmost element client-controlled, so forged values mint
     unlimited per-IP buckets and bypass the cap. Stress-tested (14/14: append
-    → attacker-controlled key; overwrite → real peer). The overwrite
-    precondition was added to every `determineSourceIp` recommendation (GUIDE,
-    SPEC §7.3a, `knowless.context.md`) and the OPS §7.2 nginx snippet.
-    Doc-only; the resolver is correct under the documented config. ✓
+    → attacker-controlled key; overwrite → real peer), then re-proven
+    end-to-end against **real nginx** (container rig: nginx → upstream running
+    a byte-identical copy of `abuse.js`). The live proof surfaced a second
+    unsafe config the unit tests missed: *omitting* the `proxy_set_header
+    X-Forwarded-For` line is as bad as appending — nginx forwards the client's
+    raw header, so the leftmost element stays client-controlled. Precondition is
+    now "set XFF to the real peer; appending OR omitting is unsafe", placed in
+    every `determineSourceIp` recommendation (GUIDE, SPEC §7.3 step 3 + §7.3a,
+    `knowless.context.md`) and the OPS §7.2 nginx snippet. Doc-only; the
+    resolver is correct under the documented config. ✓
 
 ### 17.4 Note on FR-6 timing test (AF-1.8)
 

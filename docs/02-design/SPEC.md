@@ -530,6 +530,13 @@ Step 2 — Honeypot check (exempt from timing eq.)
 
 Step 3 — Per-IP rate limit on /login (exempt from timing eq.)
   ip = determineSourceIp(request, trustedProxies)
+  # determineSourceIp returns the LEFTMOST X-Forwarded-For element when
+  # the peer is a trusted proxy. This is the rate-limit key, so the proxy
+  # MUST set X-Forwarded-For to the real peer ($remote_addr). Both appending
+  # ($proxy_add_x_forwarded_for) AND omitting the directive (nginx forwards
+  # the client's raw header) leave the leftmost element client-controlled —
+  # the client then mints a fresh bucket per request and bypasses the cap.
+  # Verified end-to-end against real nginx. See §7.6, OPS §7.2.
   if rateLimitExceeded(ip, scope='login_ip',
                        limit=maxLoginRequestsPerIpPerHour,
                        window=1h):
@@ -688,11 +695,13 @@ silently disables per-IP limiting. Resolve the real client IP with
 the exported `determineSourceIp(req, cfg.trustedProxies)` (the same
 resolver the built-in `login` route applies per FR-42 / §7.6); only
 the `login` route does this automatically. The resolver trusts the
-*leftmost* `X-Forwarded-For` element, so the trusted proxy MUST
-overwrite that header with the real peer (`$remote_addr`), never
-append to the client-supplied value — an appending proxy lets a
-client forge the leftmost element and mint unlimited rate-limit
-buckets, bypassing the per-IP cap (§7.6, OPS §7.2).**
+*leftmost* `X-Forwarded-For` element, so the trusted proxy MUST set
+that header to the real peer (`$remote_addr`). Both *appending*
+(`$proxy_add_x_forwarded_for`) and *omitting* the directive (nginx
+forwards the client's raw header) leave the leftmost element
+client-controlled — the client then forges it and mints unlimited
+rate-limit buckets, bypassing the per-IP cap. Verified end-to-end
+against real nginx (§7.6, OPS §7.2).**
 
 ### 7.4 Sham-mail destination (RESOLUTION OF OPEN QUESTION)
 

@@ -351,11 +351,14 @@ server {
     location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
-        # MUST be $remote_addr (overwrite), NOT $proxy_add_x_forwarded_for
-        # (append). knowless trusts the leftmost X-Forwarded-For element; an
-        # appending proxy preserves a client-supplied prefix, letting an
-        # attacker forge that element and mint a fresh per-IP rate-limit bucket
-        # per request — bypassing the login / new-handle caps entirely.
+        # MUST be set to $remote_addr. knowless trusts the LEFTMOST
+        # X-Forwarded-For element, so two configs are unsafe and bypass the
+        # per-IP caps: $proxy_add_x_forwarded_for (appends — keeps a
+        # client-supplied prefix), AND omitting this line entirely (nginx then
+        # forwards the client's raw X-Forwarded-For untouched). Either lets an
+        # attacker forge the leftmost element and mint a fresh rate-limit bucket
+        # per request. Both verified end-to-end against real nginx. Keep this
+        # line, exactly as $remote_addr.
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
