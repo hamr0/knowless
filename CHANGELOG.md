@@ -7,6 +7,25 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **`determineSourceIp` is now a public export.** It's the same resolver the
+  built-in `login` route uses internally — given `(req, trustedProxies)` it
+  returns the `X-Forwarded-For` / `X-Real-IP` client IP when the peer is a
+  trusted proxy, and the raw peer otherwise (anti-spoofing). Programmatic
+  `startLogin` callers behind a reverse proxy need this: `req.socket.remoteAddress`
+  is the proxy's address (a constant), so feeding it to `sourceIp` collapses
+  every caller into one rate-limit bucket and silently disables per-IP limits.
+  No behavior change — this pulls existing mechanism back into the public
+  surface (precedent: v1.1.0 `dropShamRecipient`).
+
+### Fixed
+- **Docs:** the Mode A `startLogin` worked example in `GUIDE.md` showed
+  `sourceIp: req.socket.remoteAddress`, which is wrong behind the reverse proxy
+  that `OPS.md` requires — it buckets all per-IP rate limiting under the proxy's
+  address. The example now uses `determineSourceIp(req, auth.config.trustedProxies)`,
+  and the `startLogin` reference in `knowless.context.md` documents the
+  responsibility transfer.
+
 ### Changed
 - **CI:** the publish workflow now polls the npm registry for ~2 min (was ~15s; `--prefer-online` skips npm's view cache) and accepts an `exit 0` publish even if the registry hasn't reflected it yet, so a successful-but-slow-to-reflect publish no longer reports a false failure.
 - **`publish.yml` is now manual-only (`workflow_dispatch`) — npm OIDC trusted publishing with provenance, idempotent, and verifies the registry end-state.**

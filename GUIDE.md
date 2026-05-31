@@ -333,6 +333,8 @@ pin," "post a share link," "submit a paste" — patterns where forcing
 a login *before* the action would harm the UX.
 
 ```js
+import { determineSourceIp } from 'knowless';
+
 app.post('/api/pins', async (req, res) => {
   const { email, lat, lng } = await readJsonBody(req);
   const owner = auth.deriveHandle(email);          // AF-7.4
@@ -340,7 +342,13 @@ app.post('/api/pins', async (req, res) => {
   await auth.startLogin({                          // AF-7.3
     email,
     nextUrl: 'https://app.example.com/manage',
-    sourceIp: req.socket.remoteAddress,
+    // The real client IP — this is what per-IP rate limiting buckets on.
+    // Behind a reverse proxy, req.socket.remoteAddress is the PROXY's address
+    // (a constant), which collapses every caller into one bucket and silently
+    // disables your per-IP limits. determineSourceIp reads X-Forwarded-For /
+    // X-Real-IP, but only when the peer is in trustedProxies (anti-spoofing).
+    // It's the same resolver the built-in `login` route uses internally.
+    sourceIp: determineSourceIp(req, auth.config.trustedProxies),
     // Per-call subject so the user can tell at a glance this is a
     // pin-confirmation, not a routine login. AF-9.
     subjectOverride: `Confirm your pin: ${shortcode}`,

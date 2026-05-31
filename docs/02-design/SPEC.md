@@ -681,7 +681,13 @@ The 12-step sham work that produces the timing equivalence
 `startLogin` in a loop will trip `maxLoginRequestsPerIpPerHour`
 exactly as a buggy form would. The default IP-string for
 programmatic callers is `''` (empty); supply a real `sourceIp`
-to make the limit meaningful per actual user.
+to make the limit meaningful per actual user. **Behind a reverse
+proxy, `req.socket.remoteAddress` is the proxy's address — a
+constant — which collapses every caller into one bucket and
+silently disables per-IP limiting. Resolve the real client IP with
+the exported `determineSourceIp(req, cfg.trustedProxies)` (the same
+resolver the built-in `login` route applies per FR-42 / §7.6); only
+the `login` route does this automatically.**
 
 ### 7.4 Sham-mail destination (RESOLUTION OF OPEN QUESTION)
 

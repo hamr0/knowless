@@ -2895,6 +2895,22 @@ eligible per PRD §6.3 (bug fixes that don't change the API surface).
   returns `handle: null` (before `deriveHandle` runs). Documentation
   only; no behavior change. ✓
 
+- **AF-33:** `determineSourceIp` was the right resolver but unreachable
+  by `startLogin` callers, and the `GUIDE.md` Mode A example steered them
+  wrong. The built-in `login` route resolves the client IP via
+  `determineSourceIp(req, cfg.trustedProxies)` (FR-42 / §7.6), but the
+  symbol was never re-exported, so Mode A (`startLogin`) callers behind a
+  reverse proxy could only reach `req.socket.remoteAddress` — the proxy's
+  address. The GUIDE worked example showed exactly that, while `OPS.md`
+  *requires* a reverse proxy in front. Result (surfaced by plato): every
+  per-IP login/create limit bucketed under one constant key, silently
+  globalizing caps meant to be per-attacker. Fix is two carve-outs from
+  §6.3: (1) doc correction — GUIDE example + `knowless.context.md`
+  `startLogin` row now use `determineSourceIp` and document the
+  responsibility transfer; (2) helper export — `determineSourceIp` is now
+  public, pulling existing mechanism back into the surface with no behavior
+  change (precedent: v1.1.0 `dropShamRecipient`). ✓
+
 ### 17.4 Note on FR-6 timing test (AF-1.8)
 
 The FR-6 test is a *regression detector*, not a *property

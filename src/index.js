@@ -346,3 +346,12 @@ export {
 export { createHandlers } from './handlers.js';
 export { renderLoginForm } from './form.js';
 export { normalize, deriveHandle, secretBytes } from './handle.js';
+// Re-export the same source-IP resolver the built-in `login` route uses
+// internally (handlers.js → determineSourceIp(req, cfg.trustedProxies)), so
+// programmatic `startLogin` callers behind a reverse proxy can compute the
+// real client IP instead of the proxy's peer address. Without this, an adopter
+// on the startLogin path can only reach req.socket.remoteAddress — which behind
+// a proxy is a constant, collapsing per-IP rate limiting to one global bucket.
+// Precedent: the v1.1.0 dropShamRecipient export (pull existing mechanism back
+// into the public surface; no new behavior).
+export { determineSourceIp } from './abuse.js';
