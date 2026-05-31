@@ -7,6 +7,8 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-05-31
+
 ### Added
 - **`determineSourceIp` is now a public export.** It's the same resolver the
   built-in `login` route uses internally — given `(req, trustedProxies)` it
@@ -1413,5 +1415,6 @@ Two primary audiences (PRD §4):
 
 Apache 2.0 with NOTICE preservation. See `LICENSE` and `NOTICE`.
 
-[Unreleased]: https://github.com/hamr0/knowless/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/hamr0/knowless/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/hamr0/knowless/compare/v1.2.0...v1.3.0
 [0.1.0]: https://github.com/hamr0/knowless/releases/tag/v0.1.0
