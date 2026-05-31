@@ -850,6 +850,21 @@ rate-limits) belongs above the library.
     explicitly with `failureRedirect: cfg.loginPath`. plato is
     the reference adopter for the leak-free wiring.
 
+21. **Per-IP limits silently collapse behind a proxy if you feed
+    the wrong IP.** Symptom: every `rate_limits` row shows the same
+    `login_ip` (often `127.0.0.1`), and the login / new-handle caps
+    never bite per-attacker. Cause: on the `startLogin` path you
+    passed `req.socket.remoteAddress`, which behind a reverse proxy
+    is the proxy's address — a constant. Fix: `sourceIp:
+    determineSourceIp(req, auth.config.trustedProxies)` (the built-in
+    `login` route already does this). **And** the proxy must *set*
+    `X-Forwarded-For` to the real peer (nginx `$remote_addr`): the
+    resolver trusts the leftmost element, so *appending*
+    (`$proxy_add_x_forwarded_for`) or *omitting* the directive both
+    leave it client-controllable — an attacker then forges a fresh
+    bucket per request and bypasses the cap entirely (verified
+    end-to-end against real nginx). See SPEC §7.3a, OPS §7.2.
+
 ## Constraints
 
 - **Node 22.5+** -- `node:sqlite` (`DatabaseSync`) floor; tested on Node 22

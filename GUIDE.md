@@ -1106,6 +1106,32 @@ You passed a secret shorter than 64 characters or not a string.
 Run `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`
 and use the output.
 
+### Per-IP rate limiting isn't biting / every `login_ip` is `127.0.0.1`
+
+You're behind a reverse proxy and the per-IP caps
+(`maxLoginRequestsPerIpPerHour`, `maxNewHandlesPerIpPerHour`) are
+bucketing every request under one key — so an abuser is
+indistinguishable from your whole user base and the cap never trips
+(or trips for everyone at once). Two independent causes, fix both:
+
+1. **You pass the wrong IP on the `startLogin` path.** `req.socket
+   .remoteAddress` behind a proxy is the proxy's loopback address, a
+   constant. Use the exported resolver instead:
+   `sourceIp: determineSourceIp(req, auth.config.trustedProxies)`.
+   (The built-in `login` route already does this; only programmatic
+   `startLogin` callers must pass it.)
+2. **Your proxy doesn't set `X-Forwarded-For` to the real peer.** The
+   resolver trusts the *leftmost* XFF element, so it's only safe when
+   the proxy *sets* that header to `$remote_addr`. Both *appending*
+   (nginx `$proxy_add_x_forwarded_for`) and *omitting* the directive
+   (nginx forwards the client's raw header) leave the leftmost element
+   client-controlled — an attacker then forges a new value per request
+   and bypasses the cap. Verified end-to-end against real nginx. See
+   OPS §7.2 for the exact config.
+
+Confirm the fix: send a request with a forged `X-Forwarded-For:
+9.9.9.9` and check it buckets under the real client IP, not `9.9.9.9`.
+
 ### Magic link works but `/verify` returns 401
 
 Common causes:

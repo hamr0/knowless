@@ -7,6 +7,14 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Documentation
+- Added symptom-first discoverability for the per-IP / proxy-IP pitfall shipped
+  in 1.3.0: a **Troubleshooting** entry in `GUIDE.md` ("per-IP rate limiting
+  isn't biting / every `login_ip` is `127.0.0.1`") and **Gotcha #21** in
+  `knowless.context.md`. The 1.3.0 release stated the precondition inline at the
+  recommendation sites; these entries make it findable by an operator debugging
+  the symptom.
+
 ## [1.3.0] — 2026-05-31
 
 ### Added
