@@ -2505,6 +2505,45 @@ inaccuracies the check exposed (undocumented options `bodyFooter` /
 `cookieSecure`, an incomplete `createHandlers` return shape) — so the
 work doubled as a documentation correction of the existing API.
 
+### 16.25 Why the `startLogin` throttle seam is docs, and the XFF-misconfig warning stays prose
+
+**Decision:** From a gitdone integration-surface review, three items
+were triaged. Two shipped as **documentation only** (no API growth):
+(1) a `GUIDE.md` recipe showing how an adopter throttles its own
+`startLogin` calls when it passes `bypassRateLimit: true` (AF-10),
+built from the already-public `createStore` windowed counter +
+`determineSourceIp`; and (2) one threat-model clause in `README.md`
+and `knowless.context.md` naming that the per-IP caps bound a single
+address, not aggregate outbound volume — so sender-domain reputation
+under a distributed flood is the perimeter's job. A third item —
+having `determineSourceIp` emit a one-time warning when a trusted
+proxy forwards multiple `X-Forwarded-For` elements — was **rejected.**
+
+**Reasoning:** (1) and (2) are the "documentation corrections"
+carve-out: `bypassRateLimit: true` removes the only per-IP volume cap
+on that path, and that seam was documented in SPEC/context but never
+shown as a recipe, so adopters discovered the trap the hard way. The
+fix routes through existing public surface — mechanism (the windowed
+counter) stays in the library, policy (limit / window / scope /
+whether to bypass) stays with the adopter. Note gitdone's request
+named `rateLimitExceeded` / `rateLimitIncrement` as public exports;
+they are **not** — only `determineSourceIp` is — so the recipe leans
+on the store's `rateLimitGet` / `rateLimitIncrement` methods instead,
+adding zero exports.
+
+The XFF-warning proposal fails on two counts. First, it is outside
+walk-away: it adds new code **and new state** (a "one-time" warning
+must persist) inside what is today a pure per-request resolver — none
+of the four carve-outs. Second, the signal is dirty: multiple
+`X-Forwarded-For` elements are also the *normal* signature of a
+legitimate trusted multi-hop chain (CDN → LB → app), where appending
+is correct and the leftmost is still the real client — so the warning
+would false-positive on correct deployments and train operators to
+ignore it. The misconfiguration it targets is already prose-guarded
+(OPS §7.2, `knowless.context.md` Gotcha #21). Same shape as the per-IP
+hashcash refusal: a perimeter/config concern, kept in prose. Don't
+relitigate without a fundamentally new argument.
+
 ## 17. Audit findings (v0.1 hardening backlog)
 
 > Discovered during the Phase 4-5 self-audit triggered by the

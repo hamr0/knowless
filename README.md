@@ -150,7 +150,11 @@ defense lives at the email provider, not in this library),
 sophisticated bots that bypass the honeypot, distributed floods from
 many IPs, full server compromise, social engineering, insider threat
 at the operator. Layer-2 defences (Cloudflare, fail2ban, reverse-proxy
-rate-limits) belong above the library.
+rate-limits) belong above the library. Note the per-IP caps bound a
+*single* address, not aggregate outbound volume — under a distributed
+flood (many IPs, each under the cap) your sender-domain reputation, the
+asset this auth channel depends on, is the perimeter's responsibility,
+not the library's.
 
 ## Adopters
 

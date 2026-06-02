@@ -391,6 +391,56 @@ real-send confirmation), wire the v0.2.1 hooks documented in
 [Step 8](#step-8-optional-operator-monitoring-via-event-hooks-v021)
 below — they emit without breaking the per-call silent-202 contract.
 
+> **If you pass `bypassRateLimit: true`, throttle that path yourself.**
+> The default `startLogin` path *is* rate-limited — it buckets on the
+> `sourceIp` you pass, same as the form route. But `bypassRateLimit: true`
+> (AF-10) opts a trusted server-side caller out of per-IP accounting
+> **entirely** — neither the login nor the create bucket is checked or
+> incremented (SPEC §7.3a). That's correct for a genuinely trusted CLI /
+> cron / worker. It is a **trap** when the "trusted" path can still be
+> *driven by end-user action* — the Mode A shape above, where a user
+> submission triggers your server to call `startLogin`. Bypassing then
+> removes the only volume cap, and the per-handle token cap
+> (`maxActiveTokensPerHandle`) bounds one user's outstanding links, not
+> request volume. Rate-limiting in that case lives at your layer — and
+> you don't need new API to do it. The `createStore` you already import
+> exposes the same windowed counter knowless uses internally:
+>
+> ```js
+> import { createStore, determineSourceIp } from 'knowless';
+>
+> const rl = createStore(dbPath);   // parallel read/write handle, same DB
+> const WINDOW_MS = 3_600_000;      // 1h — your policy, not knowless's
+> const LIMIT = 30;                 // your number, not knowless's
+>
+> function allowStartLogin(req) {
+>   const ip = determineSourceIp(req, auth.config.trustedProxies);
+>   const windowStart = Math.floor(Date.now() / WINDOW_MS) * WINDOW_MS;
+>   // Use your OWN scope so you never collide with knowless's
+>   // 'login_ip' / 'create_ip' buckets.
+>   if (rl.rateLimitGet('adopter_startlogin', ip, windowStart) >= LIMIT) {
+>     return false;
+>   }
+>   rl.rateLimitIncrement('adopter_startlogin', ip, windowStart);
+>   return true;
+> }
+>
+> app.post('/api/pins', async (req, res) => {
+>   // Refuse the over-limit caller the SAME way a send looks — silent 202,
+>   // so the throttle stays unobservable (FR-6 timing equivalence).
+>   if (!allowStartLogin(req)) return res.status(202).end();
+>   // ... deriveHandle / insertPendingPin ...
+>   await auth.startLogin({ /* ..., */ bypassRateLimit: true });
+>   res.status(202).end();
+> });
+> ```
+>
+> Mechanism (the windowed counter) stays in knowless; policy (the limit,
+> the window, the scope name, whether to bypass at all) stays with you.
+> `determineSourceIp` gives you the real client IP under the same
+> trusted-proxy / `X-Forwarded-For` rules the built-in route uses —
+> mind the same precondition flagged in the Mode A block above.
+
 `auth.deriveHandle(email)` returns the same opaque HMAC handle
 that the form path uses, without you having to import the helper
 or pass the secret around. The instance method **normalizes the

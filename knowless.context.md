@@ -701,7 +701,11 @@ phish, but a phished mailbox still receives links).
 honeypot, distributed floods, full server compromise,
 compromised email accounts, social engineering, insider threat
 at the operator. Layer-2 (Cloudflare / fail2ban / proxy
-rate-limits) belongs above the library.
+rate-limits) belongs above the library. The per-IP caps bound a
+*single* address, not aggregate outbound volume — a distributed
+flood (many IPs, each under the cap) still drives sender-domain
+reputation, the asset this auth channel depends on; protecting it
+under that load is the perimeter's job, not the library's.
 
 ## Gotchas
 

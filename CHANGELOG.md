@@ -7,6 +7,28 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.2] — 2026-06-02
+
+### Documentation
+- **`GUIDE.md`:** added a recipe for throttling your own `startLogin` calls
+  when you pass `bypassRateLimit: true` (AF-10). The default `startLogin` path
+  is rate-limited, but `bypassRateLimit: true` opts a trusted server-side caller
+  out of per-IP accounting entirely — a trap when that "trusted" path can still
+  be driven by end-user action (the Mode A shape). The recipe puts a cap back
+  using only existing public surface: the `createStore` windowed counter
+  (`rateLimitGet` / `rateLimitIncrement`) keyed on `determineSourceIp`, with a
+  separate scope so it can't collide with knowless's own buckets. Mechanism
+  stays in the library; the limit, window, and scope stay with the adopter. No
+  new API.
+- **Threat model (`README.md`, `knowless.context.md`):** named that the per-IP
+  caps bound a *single* address, not aggregate outbound volume — under a
+  distributed flood (many IPs, each under the cap) sender-domain reputation, the
+  asset the auth channel depends on, is the perimeter's responsibility, not the
+  library's. Makes explicit a consequence the existing "distributed floods →
+  Layer-2" line left implicit.
+- Recorded the triage (incl. the rejected `determineSourceIp` multi-element-XFF
+  warning) in PRD §16.25.
+
 ## [1.3.1] — 2026-05-31
 
 ### Documentation
