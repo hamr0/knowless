@@ -587,17 +587,25 @@ Step 9 — Issue token (real or sham)
                       expires_at = now + tokenTtlMs,
                       next_url = next_validated,
                       is_sham = 1)
+    store.getLastLogin(handle)  # discarded — mirrors the real branch's
+                                # read so hit and miss do equal DB work
+                                # (FR-6). Result unused (sham has no row).
     last_login = null
     target_address = shamRecipient   # configured null-route
 
-Step 10 — Compose and submit mail
-  body = composeMailBody(token.raw, last_login)
-  mail.submit(to=target_address, subject=subject, body=body)
-
-Step 11 — Increment rate-limit counters
+Step 10 — Reserve rate-limit budget (BEFORE the send)
+  # Increment synchronously here, before the awaited submit in Step 11.
+  # This makes the Step-3 check-and-reserve atomic per request: if the
+  # increment waited until after the send, concurrent requests from one
+  # IP would all observe a stale count and the cap would never bind. A
+  # failed send does not refund the reservation.
   rateLimitIncrement(ip, scope='login_ip')
   if is_creating:
     rateLimitIncrement(ip, scope='create_ip')
+
+Step 11 — Compose and submit mail
+  body = composeMailBody(token.raw, last_login)
+  mail.submit(to=target_address, subject=subject, body=body)
 
 Step 12 — Respond
   return same_response()

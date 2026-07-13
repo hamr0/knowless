@@ -7,6 +7,57 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+Batch of pre-existing defects surfaced by a full-repo review (no API surface
+change; all in the walk-away "bug/security fix" carve-outs):
+
+- **`bin/knowless-server` — one malformed request could crash the server.**
+  The router built `new URL(req.url, …)` outside the per-request try/catch, so
+  a request target like `//` threw synchronously in the request listener and
+  terminated the process (unauthenticated one-request DoS). The parse is now
+  guarded and answers `400`.
+- **`src/handlers.js` — per-IP rate caps did not bind under concurrency.** The
+  cap was checked before the awaited `mailer.submit()` but incremented only
+  after it, so concurrent requests from one IP all read a stale count and every
+  one was allowed. The increment now reserves the budget synchronously before
+  the send, making check-and-reserve atomic per request. Applies to both
+  `login_ip` and `create_ip`.
+- **`src/store.js` — a failed COMMIT could wedge the process.** `makeTransaction`
+  ran `COMMIT` outside the try, so a throwing COMMIT (SQLITE_BUSY on a WAL
+  checkpoint, disk-full) left the connection inside an open transaction and
+  every later write failed until restart. COMMIT is now inside the try with a
+  ROLLBACK on failure.
+- **`bin/knowless-server` — fail-open env parsing.** A boolean env var that
+  wasn't exactly `true`/`1` silently became `false` (e.g. a typo'd
+  `KNOWLESS_COOKIE_SECURE` dropped the `Secure` cookie flag); a numeric env var
+  that didn't parse became `NaN` and silently disabled its limit. Both now
+  reject with a `config error` at startup / `--config-check`. Common boolean
+  spellings (`true/false/1/0/yes/no/on/off`, any case) are accepted.
+- **`src/handlers.js` — honeypot bypassable with a non-string value.** The trap
+  only fired for a non-empty string, so a JSON body supplying the honeypot as
+  `true`/a number/an array walked past it. It now trips on any filled value.
+- **`src/handlers.js` — `createHandlers` narrowed secret validation.** It
+  checked only the length (≥64 chars), not hex, so a non-hex secret constructed
+  successfully and threw at first login instead of at startup. It now matches
+  the `knowless()` factory's hex check.
+- **`src/handlers.js` — default confirmation message showed literal markup.**
+  The default `confirmationMessage` contained `<strong>…</strong>`, but the form
+  HTML-escapes the whole message (AF-6.5), so the out-of-box login page rendered
+  the literal `<strong>` tags as text. The default is now plain text.
+- **`src/handlers.js` — FR-6 timing equivalence gap.** Inside the block labelled
+  the "equivalent-work region", the real-handle path did an extra
+  `store.getLastLogin()` lookup the sham path skipped, a faint
+  timing/enumeration signal distinguishing registered from unknown addresses.
+  The sham path now performs the same discarded lookup, so hit and miss do equal
+  DB work.
+
+### Documentation
+- **`GUIDE.md` — `startLogin` rate-limit known limitation.** Documented that
+  calling `startLogin` with neither `sourceIp` nor `bypassRateLimit: true`
+  shares one empty-string rate-limit bucket across all users (fail-closed by
+  design). The fix is caller-side: pass the real `sourceIp`, or opt out with
+  `bypassRateLimit: true` and self-throttle.
+
 ## [1.3.3] — 2026-07-13
 
 ### Security

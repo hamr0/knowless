@@ -209,6 +209,90 @@ test('cli: spawns, listens, routes loginForm and unknown 404', async (t) => {
   assert.match(missRes, /^HTTP\/1\.1 404/);
 });
 
+// Finding: a boolean env var that isn't exactly 'true'/'1' silently became
+// false (fail-open for KNOWLESS_COOKIE_SECURE); a numeric env var that
+// didn't parse became NaN and silently disabled its limit. Both must now be
+// rejected as config errors instead of degrading silently.
+test('cli: --config-check rejects a malformed boolean env var', () => {
+  const r = run(['--config-check'], {
+    KNOWLESS_SECRET: SECRET,
+    KNOWLESS_BASE_URL: 'https://x.example',
+    KNOWLESS_FROM: 'a@x.example',
+    KNOWLESS_COOKIE_SECURE: 'TRUE-ish',
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /config error/i);
+  assert.match(r.stderr, /KNOWLESS_COOKIE_SECURE/);
+});
+
+test('cli: --config-check accepts common boolean spellings', () => {
+  const r = run(['--print-config'], {
+    KNOWLESS_SECRET: SECRET,
+    KNOWLESS_BASE_URL: 'https://x.example',
+    KNOWLESS_FROM: 'a@x.example',
+    KNOWLESS_COOKIE_SECURE: 'FALSE',
+  });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /KNOWLESS_COOKIE_SECURE=false/);
+});
+
+test('cli: --config-check rejects a non-numeric numeric env var', () => {
+  const r = run(['--config-check'], {
+    KNOWLESS_SECRET: SECRET,
+    KNOWLESS_BASE_URL: 'https://x.example',
+    KNOWLESS_FROM: 'a@x.example',
+    KNOWLESS_MAX_LOGIN_REQUESTS_PER_IP_PER_HOUR: '30/hour',
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /config error/i);
+  assert.match(r.stderr, /KNOWLESS_MAX_LOGIN_REQUESTS_PER_IP_PER_HOUR/);
+});
+
+// Finding: the router built `new URL(req.url, ...)` outside the try/catch
+// wrapper, so a malformed request target (e.g. "//") threw synchronously in
+// the request listener and crashed the whole process — a one-request DoS.
+test('cli: a malformed request target does not crash the server', async (t) => {
+  const port = await pickPort();
+  const smtp = await startStubSmtp();
+  const smtpPort = smtp.address().port;
+  const dbDir = mkdtempSync(join(tmpdir(), 'knowless-cli-'));
+  const dbPath = join(dbDir, 'k.sqlite');
+
+  const child = spawn('node', [BIN], {
+    env: {
+      ...process.env,
+      KNOWLESS_SECRET: SECRET,
+      KNOWLESS_BASE_URL: `http://127.0.0.1:${port}`,
+      KNOWLESS_FROM: 'a@x.example',
+      KNOWLESS_COOKIE_DOMAIN: '127.0.0.1',
+      KNOWLESS_COOKIE_SECURE: 'false',
+      KNOWLESS_DB_PATH: dbPath,
+      KNOWLESS_SMTP_HOST: '127.0.0.1',
+      KNOWLESS_SMTP_PORT: String(smtpPort),
+      KNOWLESS_HOST: '127.0.0.1',
+      KNOWLESS_PORT: String(port),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  t.after(() => {
+    child.kill('SIGTERM');
+    smtp.close();
+    rmSync(dbDir, { recursive: true, force: true });
+  });
+
+  await waitFor(child, (s) => s.includes('listening:'));
+
+  // Send a raw request line with an unparseable target.
+  const bad = await get(port, '//');
+  assert.match(bad, /^HTTP\/1\.1 400/);
+
+  // The server must still be alive and serving after the bad request.
+  const good = await get(port, '/login');
+  assert.match(good, /^HTTP\/1\.1 200/);
+  assert.match(good, /<form/i);
+});
+
 // 6.8 — Caddy forward-auth integration test.
 // Skipped without Docker. Acts as a placeholder so the test file exists
 // and operators can run it manually. Real implementation is deferred.
