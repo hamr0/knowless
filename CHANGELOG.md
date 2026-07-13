@@ -62,6 +62,11 @@ change; all in the walk-away "bug/security fix" carve-outs):
 
 ## [1.3.3] — 2026-07-13
 
+> **npm note:** 1.3.3 ships to npm *as part of* [1.3.4] — it was tagged in git
+> but never published as a standalone npm version, so the nodemailer bump below
+> reaches registry consumers via `knowless@1.3.4`. `npm install knowless@1.3.3`
+> will not resolve; use 1.3.4 or later.
+
 ### Security
 - **`nodemailer` bumped from `^8.0.7` to `^9.0.3`**, clearing four advisories
   that `npm audit` reports as High against the 8.x line:
