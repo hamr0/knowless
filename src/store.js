@@ -13,17 +13,23 @@ import { DatabaseSync } from 'node:sqlite';
  * @param {DatabaseSync} db
  * @param {(...args: any[]) => any} fn
  */
-function makeTransaction(db, fn) {
+export function makeTransaction(db, fn) {
   return (/** @type {any[]} */ ...args) => {
     db.exec('BEGIN IMMEDIATE');
     let result;
     try {
       result = fn(...args);
+      // COMMIT inside the try: if it throws (SQLITE_BUSY on a WAL
+      // checkpoint conflict, disk-full), the catch below issues a
+      // ROLLBACK so the connection does not stay stuck inside an open
+      // transaction — otherwise every later BEGIN IMMEDIATE would throw
+      // "cannot start a transaction within a transaction" for the life
+      // of the process.
+      db.exec('COMMIT');
     } catch (err) {
       try { db.exec('ROLLBACK'); } catch { /* tolerate stack-unwind issues */ }
       throw err;
     }
-    db.exec('COMMIT');
     return result;
   };
 }

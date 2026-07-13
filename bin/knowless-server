@@ -65,6 +65,26 @@ const BOOLEAN = new Set([
 ]);
 const LIST = new Set(['trustedProxies']);
 
+// Parse a boolean env value. Accepts common spellings case-insensitively.
+// Anything else throws a config error rather than silently degrading — a
+// typo'd KNOWLESS_COOKIE_SECURE must not quietly drop the Secure flag.
+function parseBoolean(envVar, value) {
+  const v = String(value).trim().toLowerCase();
+  if (v === 'true' || v === '1' || v === 'yes' || v === 'on') return true;
+  if (v === 'false' || v === '0' || v === 'no' || v === 'off') return false;
+  throw new Error(`${envVar} must be true or false (got ${JSON.stringify(value)})`);
+}
+
+// Parse a numeric env value. A value that does not parse throws instead of
+// becoming NaN, which would silently disable the limit it configures.
+function parseNumeric(envVar, value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    throw new Error(`${envVar} must be a number (got ${JSON.stringify(value)})`);
+  }
+  return n;
+}
+
 function loadFromEnv(env = process.env) {
   const opts = {};
   for (const [key, envVar, def] of SPEC) {
@@ -72,8 +92,8 @@ function loadFromEnv(env = process.env) {
     const value = raw !== undefined && raw !== '' ? raw : def;
     if (value === null) continue; // required, missing — leave unset
     if (value === '') continue;    // optional with empty default — skip
-    if (NUMERIC.has(key)) opts[key] = Number(value);
-    else if (BOOLEAN.has(key)) opts[key] = value === 'true' || value === '1';
+    if (NUMERIC.has(key)) opts[key] = parseNumeric(envVar, value);
+    else if (BOOLEAN.has(key)) opts[key] = parseBoolean(envVar, value);
     else if (LIST.has(key)) opts[key] = value.split(',').map((s) => s.trim()).filter(Boolean);
     else opts[key] = value;
   }
@@ -206,7 +226,19 @@ function buildRouter(auth, cfg) {
     [`POST ${cfg.logoutPath}`, auth.logout],
   ]);
   return (req, res) => {
-    const url = new URL(req.url, 'http://placeholder.invalid');
+    let url;
+    try {
+      // A malformed request target (e.g. "//") makes new URL throw. This
+      // runs in the request listener, outside the per-handler catch below,
+      // so an unguarded throw here is an uncaughtException that kills the
+      // process — a one-request DoS. Answer 400 and stay up.
+      url = new URL(req.url, 'http://placeholder.invalid');
+    } catch {
+      res.statusCode = 400;
+      res.setHeader('content-type', 'text/plain; charset=utf-8');
+      res.end('bad request\n');
+      return;
+    }
     const handler = map.get(`${req.method} ${url.pathname}`);
     if (!handler) {
       res.statusCode = 404;
@@ -288,7 +320,13 @@ async function main(argv = process.argv.slice(2)) {
   if (values.help) { printHelp(); return 0; }
   if (values.version) { process.stdout.write(PKG.version + '\n'); return 0; }
 
-  const cfg = loadFromEnv();
+  let cfg;
+  try {
+    cfg = loadFromEnv();
+  } catch (err) {
+    process.stderr.write(`config error: ${err.message}\n`);
+    return 1;
+  }
   if (values['print-config']) {
     process.stdout.write(formatConfig(cfg) + '\n');
     return 0;

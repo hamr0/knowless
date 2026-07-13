@@ -1,6 +1,43 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createStore } from '../../src/store.js';
+import { createStore, makeTransaction } from '../../src/store.js';
+
+// Finding: makeTransaction ran COMMIT outside the try, so a failed COMMIT
+// (or a failed ROLLBACK) left the connection stuck inside an open
+// transaction, turning one transient write error into a process-lifetime
+// outage. The wrapper must ROLLBACK on a COMMIT failure too.
+test('makeTransaction: a failing COMMIT triggers ROLLBACK (no stuck transaction)', () => {
+  const calls = [];
+  const fakeDb = {
+    exec(sql) {
+      calls.push(sql);
+      if (sql === 'COMMIT') throw new Error('SQLITE_BUSY: database is locked');
+    },
+  };
+  const run = makeTransaction(fakeDb, () => 'ok');
+  assert.throws(() => run(), /SQLITE_BUSY/);
+  // The failed COMMIT must be followed by a ROLLBACK so the connection is
+  // not left mid-transaction.
+  assert.deepEqual(calls, ['BEGIN IMMEDIATE', 'COMMIT', 'ROLLBACK']);
+});
+
+test('makeTransaction: fn error rolls back and propagates', () => {
+  const calls = [];
+  const fakeDb = { exec: (sql) => calls.push(sql) };
+  const run = makeTransaction(fakeDb, () => {
+    throw new Error('boom');
+  });
+  assert.throws(() => run(), /boom/);
+  assert.deepEqual(calls, ['BEGIN IMMEDIATE', 'ROLLBACK']);
+});
+
+test('makeTransaction: success path commits and returns the result', () => {
+  const calls = [];
+  const fakeDb = { exec: (sql) => calls.push(sql) };
+  const run = makeTransaction(fakeDb, (x) => x * 2);
+  assert.equal(run(21), 42);
+  assert.deepEqual(calls, ['BEGIN IMMEDIATE', 'COMMIT']);
+});
 
 const HANDLE_A = 'a'.repeat(64);
 const HANDLE_B = 'b'.repeat(64);

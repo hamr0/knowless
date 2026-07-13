@@ -22,7 +22,7 @@ const DEFAULTS = {
   sessionTtlSeconds: 30 * 24 * 60 * 60,
   subject: 'Sign in',
   confirmationMessage:
-    'Thanks. If <strong>{email}</strong> is registered, a sign-in link is on its way. Check your inbox in a few minutes.',
+    'Thanks. If {email} is registered, a sign-in link is on its way. Check your inbox in a few minutes.',
   includeLastLoginInEmail: true,
   openRegistration: false,
   maxActiveTokensPerHandle: 5,
@@ -222,8 +222,8 @@ export function createHandlers({ store, mailer, config, events }) {
     { ...DEFAULTS, ...config }
   );
   if (!cfg.secret) throw new Error('config.secret required');
-  if (typeof cfg.secret !== 'string' || cfg.secret.length < 64) {
-    throw new Error('config.secret must be ≥64 hex chars (32 bytes)');
+  if (typeof cfg.secret !== 'string' || !/^[a-f0-9]{64,}$/i.test(cfg.secret)) {
+    throw new Error('config.secret must be ≥64 hex chars (32 bytes, lowercase a-f, 0-9)');
   }
   if (!cfg.baseUrl) throw new Error('config.baseUrl required');
   if (!cfg.from) throw new Error('config.from required');
@@ -374,6 +374,19 @@ export function createHandlers({ store, mailer, config, events }) {
       }
     }
 
+    // Reserve the per-IP budget BEFORE the awaited mailer.submit() below.
+    // The rate-limit checks (login_ip at step 3, create_ip above) read the
+    // counter synchronously; if the matching increment waits until after the
+    // await, concurrent requests from one IP all observe a stale count and
+    // the cap never binds. Incrementing here — still synchronous, before the
+    // first await in this flow — makes check-then-reserve atomic per request.
+    // A failed send does not refund the reservation (same as before: the old
+    // post-send increment also ran regardless of send success).
+    if (!bypassRateLimit) {
+      rateLimitIncrement(store, 'login_ip', sourceIp, HOUR_MS);
+      if (isCreating) rateLimitIncrement(store, 'create_ip', sourceIp, HOUR_MS);
+    }
+
     const expiresAt = Date.now() + cfg.tokenTtlSeconds * 1000;
     const token = issueToken();
 
@@ -391,6 +404,14 @@ export function createHandlers({ store, mailer, config, events }) {
     } else {
       isSham = true;
       toAddress = cfg.shamRecipient;
+      // FR-6 timing equivalence: mirror the real path's getLastLogin read so
+      // hit and miss perform the same indexed DB lookup. The sham handle has
+      // no row (result is null and discarded), but doing the read on both
+      // paths closes the timing/enumeration asymmetry a probing attacker
+      // could otherwise use to tell a registered address from an unknown one.
+      if (cfg.includeLastLoginInEmail) {
+        store.getLastLogin(handle);
+      }
       ev.shamHit();
     }
 
@@ -487,11 +508,6 @@ export function createHandlers({ store, mailer, config, events }) {
       }
     }
 
-    if (!bypassRateLimit) {
-      rateLimitIncrement(store, 'login_ip', sourceIp, HOUR_MS);
-      if (isCreating) rateLimitIncrement(store, 'create_ip', sourceIp, HOUR_MS);
-    }
-
     return { handle, isSham, emailNorm, nextValidated };
   }
 
@@ -528,8 +544,13 @@ export function createHandlers({ store, mailer, config, events }) {
     const honeypot = body[cfg.honeypotFieldName];
     const nextRaw = typeof body.next === 'string' ? body.next : null;
 
-    // Step 2: honeypot — exempt short-circuit (no sham work)
-    if (typeof honeypot === 'string' && honeypot.length > 0) {
+    // Step 2: honeypot — exempt short-circuit (no sham work).
+    // A real browser leaves the hidden field empty, so it arrives as ''
+    // (urlencoded) or absent. Any other value means the field was filled
+    // — trip the trap regardless of type. Checking only `typeof === 'string'`
+    // let a JSON body supply a non-string value (true / number / array) and
+    // walk straight past the honeypot.
+    if (honeypot !== undefined && honeypot !== null && honeypot !== '') {
       sameResponse(res, emailRaw, nextRaw);
       return;
     }

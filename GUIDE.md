@@ -441,6 +441,20 @@ below — they emit without breaking the per-call silent-202 contract.
 > trusted-proxy / `X-Forwarded-For` rules the built-in route uses —
 > mind the same precondition flagged in the Mode A block above.
 
+> **Known limitation — pass `sourceIp`, or `bypassRateLimit`, but don't
+> omit both.** `startLogin` defaults `sourceIp` to `''`. If you call it
+> without a `sourceIp` **and** without `bypassRateLimit: true`, every such
+> call shares one rate-limit bucket keyed on the empty string. After
+> `maxLoginRequestsPerIpPerHour` (default 30) calls in an hour, further
+> sends are silently suppressed for the rest of the window — across *all*
+> users, regardless of who they are. This is deliberately fail-*closed*
+> (it over-throttles rather than letting an undeterminable-IP request skip
+> the cap), so knowless does not "fix" it by treating a missing IP as a
+> bypass. The contract is: a genuinely trusted server-side caller passes
+> `bypassRateLimit: true` (and throttles itself per the recipe above); a
+> caller that wants per-IP limiting passes the real `sourceIp` from
+> `determineSourceIp`. Passing neither is the misuse to avoid.
+
 `auth.deriveHandle(email)` returns the same opaque HMAC handle
 that the form path uses, without you having to import the helper
 or pass the secret around. The instance method **normalizes the
