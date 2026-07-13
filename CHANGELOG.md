@@ -7,6 +7,44 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.3] — 2026-07-13
+
+### Security
+- **`nodemailer` bumped from `^8.0.7` to `^9.0.3`**, clearing four advisories
+  that `npm audit` reports as High against the 8.x line:
+  - [GHSA-p6gq-j5cr-w38f](https://github.com/advisories/GHSA-p6gq-j5cr-w38f)
+    (`<=9.0.0`) — message-level `raw` option bypasses `disableFileAccess` /
+    `disableUrlAccess`, enabling arbitrary file read and full-response SSRF in
+    the delivered message.
+  - [GHSA-268h-hp4c-crq3](https://github.com/advisories/GHSA-268h-hp4c-crq3)
+    (`<=8.0.8`) — CRLF injection in `List-*` header comments.
+  - [GHSA-wqvq-jvpq-h66f](https://github.com/advisories/GHSA-wqvq-jvpq-h66f)
+    (`<=8.0.8`) — `jsonTransport` bypasses `disableFileAccess` /
+    `disableUrlAccess` during normalization.
+  - [GHSA-r7g4-qg5f-qqm2](https://github.com/advisories/GHSA-r7g4-qg5f-qqm2)
+    (`<=8.0.7`) — improper TLS certificate validation in OAuth2 token fetch.
+
+  **Reachability: none of the four are reachable through knowless's supported
+  API.** This is hygiene and defense-in-depth, not an active-exploit fix.
+  `mailer.js` calls `sendMail({ envelope, raw })` where `raw` is a *string*
+  built by `composeRaw()` — never a `{ path }` / `{ href }` source object, which
+  is what the `raw` advisory requires. knowless emits no `List-*` headers, never
+  selects `jsonTransport` (real SMTP transport or an explicit
+  `transportOverride`), and sets `auth: undefined` so there is no OAuth2 token
+  fetch. The bump exists so adopters get a clean `npm audit` (many CI pipelines
+  gate on it) and so a future change to the mail path can't quietly reach one of
+  these.
+
+  Fixed only in `nodemailer@9.0.1+`, so the patched line is a **major** bump —
+  there is no 8.x escape hatch for the `raw` advisory. The single 9.0.0 breaking
+  change (TLS certificates now validated when fetching *remote content* —
+  attachment `href`/`path`, OAuth2 endpoints, HTTP proxy `CONNECT`) touches no
+  code path knowless uses.
+
+  **No API change.** `mailer.js` is unmodified; this is a dependency bump only.
+  Adopters upgrade with a version bump and nothing else. Raised by plato as an
+  adopter security report.
+
 ## [1.3.2] — 2026-06-02
 
 ### Documentation
@@ -1458,7 +1496,9 @@ Two primary audiences (PRD §4):
 
 Apache 2.0 with NOTICE preservation. See `LICENSE` and `NOTICE`.
 
-[Unreleased]: https://github.com/hamr0/knowless/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/hamr0/knowless/compare/v1.3.3...HEAD
+[1.3.3]: https://github.com/hamr0/knowless/compare/v1.3.2...v1.3.3
+[1.3.2]: https://github.com/hamr0/knowless/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/hamr0/knowless/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/hamr0/knowless/compare/v1.2.0...v1.3.0
 [0.1.0]: https://github.com/hamr0/knowless/releases/tag/v0.1.0
