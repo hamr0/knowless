@@ -141,7 +141,7 @@ export function knowless(options = /** @type {KnowlessOptions} */ ({})) {
     if (!opt[f]) throw new Error(`knowless: ${f} is required`);
   }
   if (typeof options.secret !== 'string' || !/^[a-f0-9]{64,}$/i.test(options.secret)) {
-    throw new Error('knowless: secret must be at least 64 hex chars (32 bytes, lowercase a-f, 0-9)');
+    throw new Error('knowless: secret must be at least 64 hex chars (32 bytes, 0-9 a-f)');
   }
   // Validate operator-supplied body footer at startup (AF-8.2).
   if (options.bodyFooter !== undefined && options.bodyFooter !== null) {

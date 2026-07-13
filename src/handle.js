@@ -43,7 +43,7 @@ export function secretBytes(secret) {
   if (Buffer.isBuffer(secret)) return secret;
   if (typeof secret !== 'string') throw new Error('secret required');
   if (!/^[a-f0-9]{64,}$/i.test(secret)) {
-    throw new Error('secret must be ≥64 hex chars (lowercase a-f, 0-9)');
+    throw new Error('secret must be ≥64 hex chars (0-9 a-f)');
   }
   return Buffer.from(secret, 'hex');
 }

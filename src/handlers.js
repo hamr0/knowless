@@ -223,7 +223,7 @@ export function createHandlers({ store, mailer, config, events }) {
   );
   if (!cfg.secret) throw new Error('config.secret required');
   if (typeof cfg.secret !== 'string' || !/^[a-f0-9]{64,}$/i.test(cfg.secret)) {
-    throw new Error('config.secret must be ≥64 hex chars (32 bytes, lowercase a-f, 0-9)');
+    throw new Error('config.secret must be ≥64 hex chars (32 bytes, 0-9 a-f)');
   }
   if (!cfg.baseUrl) throw new Error('config.baseUrl required');
   if (!cfg.from) throw new Error('config.from required');
