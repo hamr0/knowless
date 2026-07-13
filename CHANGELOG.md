@@ -7,6 +7,8 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.4] — 2026-07-13
+
 ### Fixed
 Batch of pre-existing defects surfaced by a full-repo review (no API surface
 change; all in the walk-away "bug/security fix" carve-outs):
@@ -1547,7 +1549,8 @@ Two primary audiences (PRD §4):
 
 Apache 2.0 with NOTICE preservation. See `LICENSE` and `NOTICE`.
 
-[Unreleased]: https://github.com/hamr0/knowless/compare/v1.3.3...HEAD
+[Unreleased]: https://github.com/hamr0/knowless/compare/v1.3.4...HEAD
+[1.3.4]: https://github.com/hamr0/knowless/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/hamr0/knowless/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/hamr0/knowless/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/hamr0/knowless/compare/v1.3.0...v1.3.1
