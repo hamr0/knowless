@@ -7,6 +7,22 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Documented
+
+- **⚠️ A CDN in front of the app silently defeats the per-IP caps — now warned about in README, GUIDE, and PRD (FR-42).** Docs only; no code or API change. Found the hard way in addypin (knowless's first adopter), which sits behind Cloudflare.
+
+  The existing guidance ("behind a reverse proxy you must forward the real client IP") is necessary but **not sufficient**, and the gap is nasty precisely because the config looks correct. A CDN that proxies the site terminates TLS at its edge and re-originates to the origin box, so the operator's nginx sees a **CDN edge address as its TCP peer** and faithfully forwards *that* as `X-Forwarded-For` / `X-Real-IP`. Every layer — including `determineSourceIp` — behaves exactly to spec, and still ends up bucketing the wrong identity.
+
+  Consequence: `maxLoginRequestsPerIpPerHour` and `maxNewHandlesPerIpPerHour` bucket per **CDN colo**, shared across unrelated visitors. Two properties make it hard to notice:
+  - It is *not* the single-bucket collapse the old note describes — logs still show many distinct IPs, they simply aren't your users'.
+  - It fails toward **over-throttling, not bypass**: legitimate logins and signups get rejected because a stranger in the same region spent the budget. With `maxNewHandlesPerIpPerHour` defaulting to 3, one busy colo can exhaust an hour of signups for everyone behind it.
+
+  Out of the library's reach to fix or even detect — it can only resolve the IP its operator hands it. The fix is operator-side, at the edge-most proxy: `set_real_ip_from` for each of the CDN's published ranges plus `real_ip_header CF-Connecting-IP`, so `$remote_addr` is the true client before anything reads it. **Scoping `set_real_ip_from` to the CDN's ranges is load-bearing, not hygiene** — without it a client that reaches the origin directly can forge the header and mint any bucket it likes.
+
+  In addypin this sat unnoticed because a *second* bug was masking it: the per-IP race fixed in 1.3.4 meant the caps never bound under concurrent load anyway. Fixing that race is what promoted the miskeyed bucket from cosmetic to load-bearing — worth flagging to any adopter upgrading to 1.3.4 who runs behind a CDN, because the upgrade is what arms this.
+
+- **`npm overrides` can silently hold the `nodemailer` floor down (re: [1.3.3]).** If you pin `nodemailer` via an `overrides` block in your own `package.json`, that override wins over knowless's `^9.0.3` dependency — so upgrading to 1.3.4 will *not* lift you off the vulnerable 8.x line, and `npm audit` will keep reporting the four advisories below. Raise the override to `^9.0.3` (or drop it). Neither current adopter has an override block; noting it so the next one doesn't lose an afternoon.
+
 ### Fixed
 
 - **Publish workflow pinned to `npm@11` — npm 12.0.0's `npm publish --provenance` is broken.** The job ran `npm install -g npm@latest`, which started resolving to npm 12.0.0 (released 2026-07-09) on the Node 22 runner. npm 12's `libnpmpublish` provenance code does `require('sigstore')`, but the tarball bundles only the `@sigstore/*` scoped packages — so `--provenance` dies with `MODULE_NOT_FOUND` and the publish fails outright. npm@11 bundles `sigstore` and publishes fine. Pinned to the major rather than floating on `@latest`. Revisit once npm ships a provenance fix. CI only — no runtime or published-artifact change.

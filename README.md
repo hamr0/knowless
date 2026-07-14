@@ -140,6 +140,19 @@ must forward the real client IP, or they collapse to a single bucket
 and stop biting per-attacker — see GUIDE (proxies / `startLogin`) and
 OPS (nginx).*
 
+*⚠️ **Behind a CDN (Cloudflare, Fastly, Akamai) that is necessary but
+not sufficient.** The CDN terminates TLS at its edge, so the "real
+client IP" your proxy dutifully forwards is a **CDN edge address, not
+the visitor** — every layer behaves correctly and still passes on the
+wrong IP. The per-IP caps then bucket per-CDN-colo, shared across
+unrelated visitors. It doesn't look broken (you see many distinct IPs,
+just not your users'), and it fails toward **over-throttling rather
+than bypass** — real signups rejected because a stranger in the same
+region spent the budget. Restore the true client at the edge-most proxy
+(`set_real_ip_from <cdn ranges>` + `real_ip_header CF-Connecting-IP`),
+scoped to the CDN's published ranges. See GUIDE (proxies /
+`startLogin`).*
+
 **Partially:** HMAC-secret-only leak (allows targeted existence
 checks but not session forgery), phishing (no password to type into a
 fake site, but a phished mailbox still receives links).
@@ -150,7 +163,9 @@ defense lives at the email provider, not in this library),
 sophisticated bots that bypass the honeypot, distributed floods from
 many IPs, full server compromise, social engineering, insider threat
 at the operator. Layer-2 defences (Cloudflare, fail2ban, reverse-proxy
-rate-limits) belong above the library. Note the per-IP caps bound a
+rate-limits) belong above the library — but note the irony: an
+unconfigured Cloudflare in front of you *disables* the per-IP layer
+below it (see the CDN warning above). Note the per-IP caps bound a
 *single* address, not aggregate outbound volume — under a distributed
 flood (many IPs, each under the cap) your sender-domain reputation, the
 asset this auth channel depends on, is the perimeter's responsibility,

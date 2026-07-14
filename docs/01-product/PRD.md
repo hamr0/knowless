@@ -1057,6 +1057,25 @@ standalone server mode the operator MUST explicitly configure
 trusted proxies (default: localhost only). This prevents IP
 spoofing from clients while supporting forward-auth deployments.
 
+> **Operator precondition — a CDN defeats FR-42 silently.** FR-42
+> resolves the client IP *as the operator's proxy reports it*; it
+> cannot detect that the reported IP is wrong. When a CDN
+> (Cloudflare, Fastly, Akamai) proxies the site it terminates TLS at
+> its edge and re-originates, so the operator's proxy sees a **CDN
+> edge address as its TCP peer** and forwards that. Every layer,
+> including this one, behaves to spec — and FR-39/FR-40 end up
+> bucketing per-CDN-colo, shared across unrelated visitors. The
+> failure is a *collision*, not a spoof: it fails toward
+> **over-throttling** (legitimate logins/signups rejected because a
+> stranger in the same region spent the budget), which is why it does
+> not surface as an obvious breakage. Out of the library's reach to
+> fix or detect — the operator MUST restore the true client at the
+> edge-most proxy (`set_real_ip_from <cdn ranges>` +
+> `real_ip_header CF-Connecting-IP`), scoped to the CDN's published
+> ranges so a direct-to-origin client cannot forge the header.
+> Documented in README (threat model) and GUIDE (proxies /
+> `startLogin`).
+
 **FR-43. Failures all look the same.** All abuse-protection
 rejection paths (rate limit hit, honeypot triggered, IP cap
 exceeded) MUST produce the same response shape and timing as a

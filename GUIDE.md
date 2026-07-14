@@ -380,6 +380,58 @@ app.get('/manage', (req, res) => {
 });
 ```
 
+> ### ⚠️ Behind a CDN (Cloudflare, Fastly, Akamai), the "real client IP" is the CDN
+>
+> The precondition above is necessary but **not sufficient**, and this is the
+> trap: you can satisfy it perfectly and still be wrong.
+>
+> A CDN that proxies your traffic terminates TLS at its edge and re-originates
+> to your box. So your nginx's TCP peer — `$remote_addr`, the thing it faithfully
+> forwards as `X-Forwarded-For` / `X-Real-IP` — is a **CDN edge address, not the
+> visitor.** Every layer downstream is behaving correctly. It is just passing on
+> the wrong IP.
+>
+> The result: knowless's per-IP caps (`maxLoginRequestsPerIpPerHour`,
+> `maxNewHandlesPerIpPerHour`) bucket on CDN edge IPs, so **every visitor routed
+> through the same CDN colo shares one budget.**
+>
+> This does not announce itself. It is not the single-bucket collapse described
+> above — you still see many distinct IPs in your logs, they just aren't your
+> users'. And the failure direction is the opposite of what you'd watch for: not
+> a *bypass* but a **collision that over-throttles**, silently rejecting
+> legitimate logins and signups because an unrelated stranger in the same region
+> spent the budget first. With `maxNewHandlesPerIpPerHour` at its default of 3,
+> a single busy colo can exhaust an hour's signups for everyone behind it.
+>
+> **Fix it at the edge-most proxy**, so `$remote_addr` is the true client before
+> anything else reads it. For Cloudflare (nginx, `http` context):
+>
+> ```nginx
+> # One line per range from https://www.cloudflare.com/ips-v4 + ips-v6
+> set_real_ip_from 173.245.48.0/20;
+> # … 19 more …
+> real_ip_header CF-Connecting-IP;
+> ```
+>
+> **Scoping `set_real_ip_from` to the CDN's published ranges is what makes the
+> header trustworthy** — it is not optional hygiene. Without it, a client that
+> reaches your origin directly (bypassing the CDN) can forge `CF-Connecting-IP`
+> and mint any bucket it likes. With it, that client isn't in a trusted range,
+> the header is ignored, and `$remote_addr` stays its real socket address.
+>
+> While you're there: **firewall your origin to the CDN's ranges too.** If your
+> box answers on its raw IP, the CDN — and every protection you bought it for —
+> is one `curl --resolve` away from being skipped entirely.
+>
+> Verify empirically rather than by inspection; the whole point is that this
+> looks fine from the config. Send a request with a unique path and confirm your
+> access log attributes it to *your* IP, not the CDN's.
+>
+> *(This is not hypothetical — it is exactly what happened to addypin, knowless's
+> first adopter, and it went unnoticed for as long as it did because a separate
+> bug meant the per-IP caps never bound under load anyway. Fixing that bug in
+> 1.3.4 is what made the miskeyed bucket start to matter.)*
+
 `startLogin` runs the same 12-step sham-work flow as the form
 handler, so unknown emails, rate-limit hits, and real sends all
 return identical shapes — the caller can't observe which happened.
