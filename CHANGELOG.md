@@ -9,7 +9,7 @@ Versioning is [SemVer](https://semver.org/).
 
 ### Documented
 
-- **⚠️ A CDN in front of the app silently defeats the per-IP caps — now warned about in README, GUIDE, PRD (FR-42), and `knowless.context.md` (gotcha 22).** Docs only; no code or API change. Found the hard way in addypin (knowless's first adopter), which sits behind Cloudflare.
+- **⚠️ A CDN in front of the app silently defeats the per-IP caps — now warned about in README, GUIDE, OPS (§7 nginx recipe), PRD (FR-42), and `knowless.context.md` (gotcha 22).** Docs only; no code or API change. Found the hard way in addypin (knowless's first adopter), which sits behind Cloudflare.
 
   The existing guidance ("behind a reverse proxy you must forward the real client IP") is necessary but **not sufficient**, and the gap is nasty precisely because the config looks correct. A CDN that proxies the site terminates TLS at its edge and re-originates to the origin box, so the operator's nginx sees a **CDN edge address as its TCP peer** and faithfully forwards *that* as `X-Forwarded-For` / `X-Real-IP`. Every layer — including `determineSourceIp` — behaves exactly to spec, and still ends up bucketing the wrong identity.
 

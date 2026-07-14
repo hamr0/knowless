@@ -369,6 +369,17 @@ server {
     }
 }
 
+# ── Behind a CDN only ── goes in the `http` context, NOT inside `server`.
+# Restores the true client into $remote_addr before anything above reads it.
+# One set_real_ip_from per published CDN range (Cloudflare: /ips-v4 + /ips-v6).
+# Scoping these to the CDN's ranges is LOAD-BEARING, not hygiene: without it a
+# client hitting the origin directly can forge CF-Connecting-IP and mint any
+# bucket it likes. Firewall the origin to those ranges too — otherwise the CDN,
+# and everything you bought it for, is one `curl --resolve` away from skipped.
+# set_real_ip_from 173.245.48.0/20;
+# … one line per range …
+# real_ip_header CF-Connecting-IP;
+
 # Protect a service with auth_request
 server {
     listen 443 ssl http2;
