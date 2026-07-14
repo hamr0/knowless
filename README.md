@@ -145,10 +145,15 @@ not sufficient.** The CDN terminates TLS at its edge, so the "real
 client IP" your proxy dutifully forwards is a **CDN edge address, not
 the visitor** — every layer behaves correctly and still passes on the
 wrong IP. The per-IP caps then bucket per-CDN-colo, shared across
-unrelated visitors. It doesn't look broken (you see many distinct IPs,
-just not your users'), and it fails toward **over-throttling rather
-than bypass** — real signups rejected because a stranger in the same
-region spent the budget. Restore the true client at the edge-most proxy
+unrelated visitors. It doesn't look broken — you see many distinct IPs,
+just not your users'. Which way it *then* fails turns on your origin's
+`X-Forwarded-For` directive: **set** it to `$remote_addr` and the caps
+bucket per-colo, **over-throttling** (real signups rejected because a
+stranger in the same region spent the budget); **append** or omit it and
+the client's own forged element survives as the leftmost one the
+resolver trusts, **bypassing** the cap entirely. A CDN layers the
+collision *on top of* the spoofing risk — it does not replace it.
+Restore the true client at the edge-most proxy
 (`set_real_ip_from <cdn ranges>` + `real_ip_header CF-Connecting-IP`),
 scoped to the CDN's published ranges. See GUIDE (proxies /
 `startLogin`).*

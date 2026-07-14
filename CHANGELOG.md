@@ -9,17 +9,19 @@ Versioning is [SemVer](https://semver.org/).
 
 ### Documented
 
-- **⚠️ A CDN in front of the app silently defeats the per-IP caps — now warned about in README, GUIDE, and PRD (FR-42).** Docs only; no code or API change. Found the hard way in addypin (knowless's first adopter), which sits behind Cloudflare.
+- **⚠️ A CDN in front of the app silently defeats the per-IP caps — now warned about in README, GUIDE, PRD (FR-42), and `knowless.context.md` (gotcha 22).** Docs only; no code or API change. Found the hard way in addypin (knowless's first adopter), which sits behind Cloudflare.
 
   The existing guidance ("behind a reverse proxy you must forward the real client IP") is necessary but **not sufficient**, and the gap is nasty precisely because the config looks correct. A CDN that proxies the site terminates TLS at its edge and re-originates to the origin box, so the operator's nginx sees a **CDN edge address as its TCP peer** and faithfully forwards *that* as `X-Forwarded-For` / `X-Real-IP`. Every layer — including `determineSourceIp` — behaves exactly to spec, and still ends up bucketing the wrong identity.
 
-  Consequence: `maxLoginRequestsPerIpPerHour` and `maxNewHandlesPerIpPerHour` bucket per **CDN colo**, shared across unrelated visitors. Two properties make it hard to notice:
-  - It is *not* the single-bucket collapse the old note describes — logs still show many distinct IPs, they simply aren't your users'.
-  - It fails toward **over-throttling, not bypass**: legitimate logins and signups get rejected because a stranger in the same region spent the budget. With `maxNewHandlesPerIpPerHour` defaulting to 3, one busy colo can exhaust an hour of signups for everyone behind it.
+  Consequence: `maxLoginRequestsPerIpPerHour` and `maxNewHandlesPerIpPerHour` bucket per **CDN colo**, shared across unrelated visitors. It is *not* the single-bucket collapse the old note describes — logs still show many distinct IPs, they simply aren't your users'. Which way it fails from there turns on the origin's `X-Forwarded-For` directive:
+  - **Set to `$remote_addr`** (what the precondition prescribes): a **collision that over-throttles** — legitimate logins and signups rejected because a stranger in the same region spent the budget. With `maxNewHandlesPerIpPerHour` defaulting to 3, one busy colo can exhaust an hour of signups for everyone behind it.
+  - **Appended (`$proxy_add_x_forwarded_for`) or omitted**: worse than the plain-proxy case, not milder. Cloudflare *appends* the connecting IP to any `X-Forwarded-For` the client sent rather than replacing it, so a client-forged element survives as the **leftmost** one — exactly the element `determineSourceIp` trusts. Each forged value mints a fresh bucket and the cap is **bypassed entirely**.
+
+  A CDN layers the collision *on top of* the spoofing exposure; it does not replace it. Both are closed by the same operator-side fix.
 
   Out of the library's reach to fix or even detect — it can only resolve the IP its operator hands it. The fix is operator-side, at the edge-most proxy: `set_real_ip_from` for each of the CDN's published ranges plus `real_ip_header CF-Connecting-IP`, so `$remote_addr` is the true client before anything reads it. **Scoping `set_real_ip_from` to the CDN's ranges is load-bearing, not hygiene** — without it a client that reaches the origin directly can forge the header and mint any bucket it likes.
 
-  In addypin this sat unnoticed because a *second* bug was masking it: the per-IP race fixed in 1.3.4 meant the caps never bound under concurrent load anyway. Fixing that race is what promoted the miskeyed bucket from cosmetic to load-bearing — worth flagging to any adopter upgrading to 1.3.4 who runs behind a CDN, because the upgrade is what arms this.
+  Found in addypin, and worth flagging to any adopter upgrading to 1.3.4 from behind a CDN — but be precise about what the upgrade changes. The per-IP race fixed in 1.3.4 let **concurrent** requests in one bucket slip past the cap; sequential requests still incremented and still bound. So a miskeyed bucket was already biting, merely leakily under burst. Fixing the race makes enforcement reliable, so a wrong bucket bites **more consistently**: the upgrade *sharpens* this exposure rather than creating it, and the remedy is to fix the edge — not to hold back the upgrade.
 
 - **`npm overrides` can silently hold the `nodemailer` floor down (re: [1.3.3]).** If you pin `nodemailer` via an `overrides` block in your own `package.json`, that override wins over knowless's `^9.0.3` dependency — so upgrading to 1.3.4 will *not* lift you off the vulnerable 8.x line, and `npm audit` will keep reporting the four advisories below. Raise the override to `^9.0.3` (or drop it). Neither current adopter has an override block; noting it so the next one doesn't lose an afternoon.
 

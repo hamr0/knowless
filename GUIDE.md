@@ -397,11 +397,26 @@ app.get('/manage', (req, res) => {
 >
 > This does not announce itself. It is not the single-bucket collapse described
 > above — you still see many distinct IPs in your logs, they just aren't your
-> users'. And the failure direction is the opposite of what you'd watch for: not
-> a *bypass* but a **collision that over-throttles**, silently rejecting
-> legitimate logins and signups because an unrelated stranger in the same region
-> spent the budget first. With `maxNewHandlesPerIpPerHour` at its default of 3,
-> a single busy colo can exhaust an hour's signups for everyone behind it.
+> users'. **Which way it fails from there depends on the same `X-Forwarded-For`
+> directive as the precondition above:**
+>
+> - **Origin *sets* `X-Forwarded-For $remote_addr`** (what the precondition tells
+>   you to do): the leftmost element is the CDN edge, so the caps bucket per
+>   colo. This is a **collision that over-throttles** — legitimate logins and
+>   signups silently rejected because an unrelated stranger in the same region
+>   spent the budget first. With `maxNewHandlesPerIpPerHour` at its default of 3,
+>   a single busy colo can exhaust an hour's signups for everyone behind it.
+> - **Origin *appends* (`$proxy_add_x_forwarded_for`) or omits the directive**:
+>   here the CDN makes things **worse than the plain-proxy case, not milder.**
+>   Cloudflare *appends* the connecting IP to whatever `X-Forwarded-For` the
+>   client sent rather than replacing it — so a client-forged element survives as
+>   the **leftmost** one, which is precisely the element this resolver trusts.
+>   Each forged value mints a fresh bucket and the per-IP cap is **bypassed
+>   entirely.**
+>
+> So do not read "CDN" as "the failure is merely a collision, not a spoof." A CDN
+> layers the colo-collision *on top of* the spoofing exposure; it does not
+> replace it. Both are closed by the same fix.
 >
 > **Fix it at the edge-most proxy**, so `$remote_addr` is the true client before
 > anything else reads it. For Cloudflare (nginx, `http` context):
@@ -428,9 +443,13 @@ app.get('/manage', (req, res) => {
 > access log attributes it to *your* IP, not the CDN's.
 >
 > *(This is not hypothetical — it is exactly what happened to addypin, knowless's
-> first adopter, and it went unnoticed for as long as it did because a separate
-> bug meant the per-IP caps never bound under load anyway. Fixing that bug in
-> 1.3.4 is what made the miskeyed bucket start to matter.)*
+> first adopter. Be precise about what 1.3.4 does and does not change here: the
+> per-IP race it fixes let **concurrent** requests in one bucket slip past the
+> cap, but sequential requests still incremented and still bound — so a miskeyed
+> bucket was already biting, merely leakily under burst. Fixing the race makes
+> enforcement reliable, so a wrong bucket bites **more consistently**. The
+> upgrade sharpens the exposure; it does not create it. The remedy is to fix the
+> edge, not to hold back the upgrade.)*
 
 `startLogin` runs the same 12-step sham-work flow as the form
 handler, so unknown emails, rate-limit hits, and real sends all

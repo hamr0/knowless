@@ -358,6 +358,12 @@ server {
         # forwards the client's raw X-Forwarded-For untouched). Either lets an
         # attacker forge the leftmost element and mint a fresh rate-limit bucket
         # per request. Keep this line, exactly as $remote_addr.
+        #
+        # NOT SUFFICIENT BEHIND A CDN. If Cloudflare/Fastly/Akamai proxies this
+        # site, $remote_addr is a CDN EDGE address, not the visitor — this line
+        # then forwards the wrong IP perfectly and the per-IP caps bucket per CDN
+        # colo (over-throttling unrelated visitors). See the real_ip block below;
+        # it must run for $remote_addr to be the true client here.
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
     }

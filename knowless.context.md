@@ -869,6 +869,45 @@ under that load is the perimeter's job, not the library's.
     bucket per request and bypasses the cap entirely (verified
     end-to-end against real nginx). See SPEC §7.3a, OPS §7.2.
 
+22. **A CDN in front of the app defeats the per-IP caps even when
+    #21 is done perfectly.** Symptom: none — that is the point. The
+    config looks correct and every layer behaves to spec. Cause: a
+    CDN (Cloudflare, Fastly, Akamai) terminates TLS at its edge and
+    re-originates, so your proxy's TCP peer (`$remote_addr` — the
+    thing #21 tells you to forward) is a **CDN edge address, not the
+    visitor**. `determineSourceIp` then faithfully resolves the wrong
+    identity. This is *not* the single-bucket collapse of #21: your
+    logs still show many distinct IPs, they just aren't your users'.
+    Which way it fails turns on the same `X-Forwarded-For` directive
+    as #21 — *setting* it to the peer buckets per **CDN colo**, a
+    **collision that over-throttles** (real signups rejected because
+    a stranger in the same region spent the budget; with
+    `maxNewHandlesPerIpPerHour` at its default of 3, one busy colo
+    exhausts an hour of signups for everyone behind it); *appending*
+    or *omitting* it is **worse** than the bare-proxy case, because
+    Cloudflare *appends* the connecting IP to any `X-Forwarded-For`
+    the client sent rather than replacing it — so the client's forged
+    element survives as the **leftmost** one, which is the element the
+    resolver trusts, and the cap is bypassed entirely. A CDN layers
+    the collision *on top of* the spoof exposure; it does not replace
+    it. Out of the library's reach to fix or detect — it can only
+    resolve the IP its operator hands it. Fix at the **edge-most**
+    proxy, so `$remote_addr` is the true client before anything reads
+    it (nginx, `http` context): `set_real_ip_from <each published CDN
+    range>` + `real_ip_header CF-Connecting-IP`. **Scoping
+    `set_real_ip_from` to the CDN's ranges is load-bearing, not
+    hygiene** — without it, a client reaching your origin directly can
+    forge `CF-Connecting-IP` and mint any bucket it likes; firewall
+    the origin to the CDN's ranges while you are there. Verify
+    empirically (the whole point is that it looks fine from the
+    config): request a unique path and confirm the access log
+    attributes it to *your* IP, not the CDN's. Note for upgraders:
+    1.3.4's per-IP race fix makes the caps bind reliably (before, only
+    *concurrent* requests slipped through), so it makes a wrong bucket
+    bite more consistently — it sharpens this rather than causing it.
+    Hit in addypin, knowless's first adopter. See GUIDE (proxies /
+    `startLogin`), PRD FR-42.
+
 ## Constraints
 
 - **Node 22.5+** -- `node:sqlite` (`DatabaseSync`) floor; tested on Node 22

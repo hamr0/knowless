@@ -1064,11 +1064,16 @@ spoofing from clients while supporting forward-auth deployments.
 > its edge and re-originates, so the operator's proxy sees a **CDN
 > edge address as its TCP peer** and forwards that. Every layer,
 > including this one, behaves to spec — and FR-39/FR-40 end up
-> bucketing per-CDN-colo, shared across unrelated visitors. The
-> failure is a *collision*, not a spoof: it fails toward
-> **over-throttling** (legitimate logins/signups rejected because a
-> stranger in the same region spent the budget), which is why it does
-> not surface as an obvious breakage. Out of the library's reach to
+> bucketing per-CDN-colo, shared across unrelated visitors. Which way
+> it fails turns on the operator's `X-Forwarded-For` directive:
+> *setting* it to the peer yields a **collision** that over-throttles
+> (legitimate logins/signups rejected because a stranger in the same
+> region spent the budget) — which is why it does not surface as an
+> obvious breakage; *appending* or *omitting* it leaves the client's
+> own forged element leftmost, and leftmost is the element FR-42
+> trusts, so the cap is **bypassed entirely**. A CDN layers the
+> collision *on top of* the spoofing exposure; it does not replace
+> it. Out of the library's reach to
 > fix or detect — the operator MUST restore the true client at the
 > edge-most proxy (`set_real_ip_from <cdn ranges>` +
 > `real_ip_header CF-Connecting-IP`), scoped to the CDN's published
