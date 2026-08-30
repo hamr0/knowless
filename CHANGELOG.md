@@ -7,6 +7,10 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Publish workflow gates on the types being usable BY AN ADOPTER, not just internally.** `npm run typecheck` (`tsc --noEmit`) checks the *source*; it cannot see the generated `.d.ts` as an adopter resolves it from inside `node_modules`, which is the one thing consumers actually get. The publish workflow now packs the tarball, installs it into a clean consumer project, and compiles a quickstart against it, so a release whose published types are broken cannot reach the registry.  The consumer pins `@types/node` to the major this package builds against instead of floating to the newest, so a stricter DefinitelyTyped release cannot turn the publish gate red for reasons unrelated to the commit being published. Verified locally: the quickstart compiles green against a packed tarball, and a deliberately broken dereference fails it. CI only — no runtime or published-artifact change.
+
 ### Documented
 
 - **⚠️ A CDN in front of the app silently defeats the per-IP caps — now warned about in README, GUIDE, OPS (§7 nginx recipe), PRD (FR-42), and `knowless.context.md` (gotcha 22).** Docs only; no code or API change. Found the hard way in addypin (knowless's first adopter), which sits behind Cloudflare.
