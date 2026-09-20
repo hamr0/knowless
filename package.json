@@ -35,7 +35,8 @@
     "lint": "find src bin -type f \\( -name '*.js' -o -name 'knowless-server' \\) -exec node --check {} \\;",
     "typecheck": "tsc --noEmit",
     "build:types": "tsc",
-    "prepublishOnly": "npm run build:types"
+    "prepublishOnly": "npm run build:types",
+    "check:lockfile": "node scripts/check-lockfile.mjs"
   },
   "dependencies": {
     "nodemailer": "^9.0.3"
