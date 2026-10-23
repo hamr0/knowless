@@ -49,6 +49,20 @@ async function postLogin(auth, body) {
   return res;
 }
 
+async function waitUntil(pred, what) {
+  const deadline = Date.now() + 5000;
+  while (!pred()) {
+    if (Date.now() > deadline) assert.fail(`timed out waiting for ${what}`);
+    await sleep(5);
+  }
+}
+
+// Wait for n more window emissions to land in `calls`.
+async function idleEmissions(calls, n) {
+  const target = calls.length + n;
+  await waitUntil(() => calls.length >= target, `${n} more emissions`);
+}
+
 // --- onMailerSubmit ---------------------------------------------------------
 
 test('onMailerSubmit: fires on real submission with {messageId, handle, timestamp}', async () => {
@@ -205,30 +219,44 @@ test('onSuppressionWindow: counters reset after each emission', async () => {
     onSuppressionWindow: (p) => calls.push(p),
     suppressionWindowMs: 40,
   });
-  const waitUntil = async (pred, what) => {
-    const deadline = Date.now() + 5000;
-    while (!pred()) {
-      if (Date.now() > deadline) assert.fail(`timed out waiting for ${what}`);
-      await sleep(5);
-    }
-  };
-  const idleEmissions = async (n) => {
-    const target = calls.length + n;
-    await waitUntil(() => calls.length >= target, `${n} more emissions`);
-  };
   try {
     await postLogin(auth, formBody({ email: 'first@example.com' }));
     await waitUntil(() => sum(calls, 'sham') >= 1, 'first sham to be reported');
-    await idleEmissions(3); // would re-report the hit if the reset were broken
+    await idleEmissions(calls, 3); // would re-report the hit if the reset were broken
     assert.equal(sum(calls, 'sham'), 1, 'first hit reported exactly once');
 
     await postLogin(auth, formBody({ email: 'second@example.com' }));
     await waitUntil(() => sum(calls, 'sham') >= 2, 'second sham to be reported');
-    await idleEmissions(3);
+    await idleEmissions(calls, 3);
     assert.equal(sum(calls, 'sham'), 2, 'each hit reported exactly once overall');
     assert.ok(
       calls.every((c) => c.sham <= 1),
       'no window carries over a prior window\'s count',
+    );
+  } finally {
+    auth.close();
+  }
+});
+
+test('onSuppressionWindow: rate-limit counter resets after each emission', async () => {
+  // Same emission-synchronised shape as the sham test above: the cap hit
+  // must be reported in exactly one window, never re-counted afterwards.
+  const calls = [];
+  const auth = newAuth({
+    openRegistration: true,
+    maxLoginRequestsPerIpPerHour: 1,
+    onSuppressionWindow: (p) => calls.push(p),
+    suppressionWindowMs: 40,
+  });
+  try {
+    await postLogin(auth, formBody({ email: 'first@example.com' }));
+    await postLogin(auth, formBody({ email: 'second@example.com' })); // hits the cap
+    await waitUntil(() => sum(calls, 'rateLimited') >= 1, 'rate-limit hit to be reported');
+    await idleEmissions(calls, 3); // would re-report the hit if the reset were broken
+    assert.equal(sum(calls, 'rateLimited'), 1, 'cap hit reported exactly once');
+    assert.ok(
+      calls.every((c) => c.rateLimited <= 1),
+      'no window carries over a prior window\'s rate-limit count',
     );
   } finally {
     auth.close();
