@@ -197,22 +197,42 @@ test('onSuppressionWindow: heartbeat — fires even when both counters are zero'
 });
 
 test('onSuppressionWindow: counters reset after each emission', async () => {
+  // Synchronised to emissions, not wall-clock: a hit must be reported in
+  // exactly one window and never re-counted in later ones. Asserting on
+  // running totals is independent of which window a slow request lands in.
   const calls = [];
   const auth = newAuth({
     onSuppressionWindow: (p) => calls.push(p),
-    suppressionWindowMs: 70,
+    suppressionWindowMs: 40,
   });
-  await postLogin(auth, formBody({ email: 'first@example.com' }));
-  await sleep(100);
-  // After first emission, send another sham, wait for second emission
-  await postLogin(auth, formBody({ email: 'second@example.com' }));
-  await sleep(100);
-  assert.ok(calls.length >= 2);
-  assert.equal(calls[0].sham, 1);
-  // Second window saw exactly one sham, not 1 + 1
-  const second = calls[1];
-  assert.equal(second.sham, 1, 'counter should reset between windows');
-  auth.close();
+  const waitUntil = async (pred, what) => {
+    const deadline = Date.now() + 5000;
+    while (!pred()) {
+      if (Date.now() > deadline) assert.fail(`timed out waiting for ${what}`);
+      await sleep(5);
+    }
+  };
+  const idleEmissions = async (n) => {
+    const target = calls.length + n;
+    await waitUntil(() => calls.length >= target, `${n} more emissions`);
+  };
+  try {
+    await postLogin(auth, formBody({ email: 'first@example.com' }));
+    await waitUntil(() => sum(calls, 'sham') >= 1, 'first sham to be reported');
+    await idleEmissions(3); // would re-report the hit if the reset were broken
+    assert.equal(sum(calls, 'sham'), 1, 'first hit reported exactly once');
+
+    await postLogin(auth, formBody({ email: 'second@example.com' }));
+    await waitUntil(() => sum(calls, 'sham') >= 2, 'second sham to be reported');
+    await idleEmissions(3);
+    assert.equal(sum(calls, 'sham'), 2, 'each hit reported exactly once overall');
+    assert.ok(
+      calls.every((c) => c.sham <= 1),
+      'no window carries over a prior window\'s count',
+    );
+  } finally {
+    auth.close();
+  }
 });
 
 test('onSuppressionWindow: rate-limit + sham co-fire when create_ip cap forces fall-through', async () => {
