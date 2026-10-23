@@ -119,24 +119,84 @@ test('per-IP rate limit: short-circuits past threshold', async () => {
   h.close();
 });
 
-test('open-registration: creates handle on first hit when enabled', async () => {
+test('open-registration: real mail on first hit, but no handle row until redemption', async () => {
   const h = newHarness({ openRegistration: true });
   const newEmail = 'newcomer@example.com';
   const handle = deriveHandle(newEmail, TEST_SECRET);
   assert.equal(h.store.handleExists(handle), false);
 
   await postLogin(h.handlers, formBody({ email: newEmail }));
-  assert.equal(h.store.handleExists(handle), true);
   assert.equal(h.sentMail[0].envelope.to[0], newEmail);
+  // Unredeemed address must NOT become an "existing" handle.
+  assert.equal(h.store.handleExists(handle), false);
+
+  // Redeem the link: the row is created at first redemption.
+  const tokenRaw = extractToken(h.sentMail[0].raw);
+  const res = fakeRes();
+  await h.handlers.callback(
+    fakeReq({ method: 'GET', url: `/auth/callback?t=${tokenRaw}` }),
+    res,
+  );
+  assert.equal(res._setCookies.length, 1);
+  assert.equal(h.store.handleExists(handle), true);
+  h.close();
+});
+
+test('open-registration: unredeemed address keeps hitting the create cap (core regression)', async () => {
+  const h = newHarness({ openRegistration: true, maxNewHandlesPerIpPerHour: 1 });
+  const target = 'victim@example.com';
+  const handle = deriveHandle(target, TEST_SECRET);
+
+  await postLogin(h.handlers, formBody({ email: target }));
+  await postLogin(h.handlers, formBody({ email: target }));
+
+  assert.equal(h.sentMail.length, 2);
+  assert.equal(h.sentMail[0].envelope.to[0], target);
+  // Second send to the same never-redeemed address is still "new" -> capped -> sham.
+  assert.equal(h.sentMail[1].envelope.to[0], 'null@knowless.invalid');
+  assert.equal(h.store.handleExists(handle), false);
+  h.close();
+});
+
+test('open-registration: after redemption the handle is existing and bypasses the create cap', async () => {
+  const h = newHarness({ openRegistration: true, maxNewHandlesPerIpPerHour: 1 });
+  const target = 'returning@example.com';
+
+  await postLogin(h.handlers, formBody({ email: target }));
+  const tokenRaw = extractToken(h.sentMail[0].raw);
+  await h.handlers.callback(
+    fakeReq({ method: 'GET', url: `/auth/callback?t=${tokenRaw}` }),
+    fakeRes(),
+  );
+  assert.equal(h.store.handleExists(deriveHandle(target, TEST_SECRET)), true);
+
+  // Exhaust the create budget with a different new address (sham).
+  await postLogin(h.handlers, formBody({ email: 'other@example.com' }));
+  assert.equal(h.sentMail[1].envelope.to[0], 'null@knowless.invalid');
+
+  // Redeemed address still gets real mail (existing-handle path).
+  await postLogin(h.handlers, formBody({ email: target }));
+  assert.equal(h.sentMail[2].envelope.to[0], target);
+  h.close();
+});
+
+test('allowlist (openRegistration false): pre-seeded gets real mail, others get sham', async () => {
+  const h = newHarness({ openRegistration: false });
+  h.store.upsertHandle(deriveHandle(REGISTERED, TEST_SECRET));
+
+  await postLogin(h.handlers, formBody({ email: REGISTERED }));
+  await postLogin(h.handlers, formBody({ email: UNREGISTERED }));
+  assert.equal(h.sentMail[0].envelope.to[0], REGISTERED);
+  assert.equal(h.sentMail[1].envelope.to[0], 'null@knowless.invalid');
   h.close();
 });
 
 test('open-registration cap: silently shams when IP cap exceeded', async () => {
   const h = newHarness({ openRegistration: true, maxNewHandlesPerIpPerHour: 1 });
 
-  // First creation succeeds
+  // First creation succeeds (real mail; row is created at redemption)
   await postLogin(h.handlers, formBody({ email: 'first@example.com' }));
-  assert.equal(h.store.handleExists(deriveHandle('first@example.com', TEST_SECRET)), true);
+  assert.equal(h.sentMail[0].envelope.to[0], 'first@example.com');
 
   // Second: cap exceeded → sham (handle NOT created, mail to null-route)
   await postLogin(h.handlers, formBody({ email: 'second@example.com' }));
