@@ -49,6 +49,20 @@ async function postLogin(auth, body) {
   return res;
 }
 
+async function waitUntil(pred, what) {
+  const deadline = Date.now() + 5000;
+  while (!pred()) {
+    if (Date.now() > deadline) assert.fail(`timed out waiting for ${what}`);
+    await sleep(5);
+  }
+}
+
+// Wait for n more window emissions to land in `calls`.
+async function idleEmissions(calls, n) {
+  const target = calls.length + n;
+  await waitUntil(() => calls.length >= target, `${n} more emissions`);
+}
+
 // --- onMailerSubmit ---------------------------------------------------------
 
 test('onMailerSubmit: fires on real submission with {messageId, handle, timestamp}', async () => {
@@ -140,6 +154,11 @@ test('onTransportFailure: fires on SMTP rejection', async () => {
 
 // --- onSuppressionWindow ----------------------------------------------------
 
+// The window timer starts at construction, not at the first request, so
+// sequential requests can straddle a tick. Counters reset per tick, so
+// the total across all emissions is conserved; assert on that.
+const sum = (calls, k) => calls.reduce((n, c) => n + c[k], 0);
+
 test('onSuppressionWindow: aggregates sham hits across the window', async () => {
   const calls = [];
   const auth = newAuth({
@@ -152,10 +171,10 @@ test('onSuppressionWindow: aggregates sham hits across the window', async () => 
   await postLogin(auth, formBody({ email: 'c@example.com' }));
   // Wait for at least one window emission
   await sleep(120);
-  // First emission should report sham=3
+  // Total across emissions should report sham=3
   assert.ok(calls.length >= 1, 'expected at least one window emission');
-  assert.equal(calls[0].sham, 3);
-  assert.equal(calls[0].rateLimited, 0);
+  assert.equal(sum(calls, 'sham'), 3);
+  assert.equal(sum(calls, 'rateLimited'), 0);
   assert.equal(calls[0].windowMs, 80);
   auth.close();
 });
@@ -174,7 +193,7 @@ test('onSuppressionWindow: aggregates rate-limit hits (login_ip cap)', async () 
   await postLogin(auth, formBody({ email: 'c@example.com' }));
   await sleep(120);
   assert.ok(calls.length >= 1);
-  assert.equal(calls[0].rateLimited, 1, 'expected one rate-limit hit on the third request');
+  assert.equal(sum(calls, 'rateLimited'), 1, 'expected one rate-limit hit on the third request');
   auth.close();
 });
 
@@ -192,22 +211,56 @@ test('onSuppressionWindow: heartbeat — fires even when both counters are zero'
 });
 
 test('onSuppressionWindow: counters reset after each emission', async () => {
+  // Synchronised to emissions, not wall-clock: a hit must be reported in
+  // exactly one window and never re-counted in later ones. Asserting on
+  // running totals is independent of which window a slow request lands in.
   const calls = [];
   const auth = newAuth({
     onSuppressionWindow: (p) => calls.push(p),
-    suppressionWindowMs: 70,
+    suppressionWindowMs: 40,
   });
-  await postLogin(auth, formBody({ email: 'first@example.com' }));
-  await sleep(100);
-  // After first emission, send another sham, wait for second emission
-  await postLogin(auth, formBody({ email: 'second@example.com' }));
-  await sleep(100);
-  assert.ok(calls.length >= 2);
-  assert.equal(calls[0].sham, 1);
-  // Second window saw exactly one sham, not 1 + 1
-  const second = calls[1];
-  assert.equal(second.sham, 1, 'counter should reset between windows');
-  auth.close();
+  try {
+    await postLogin(auth, formBody({ email: 'first@example.com' }));
+    await waitUntil(() => sum(calls, 'sham') >= 1, 'first sham to be reported');
+    await idleEmissions(calls, 3); // would re-report the hit if the reset were broken
+    assert.equal(sum(calls, 'sham'), 1, 'first hit reported exactly once');
+
+    await postLogin(auth, formBody({ email: 'second@example.com' }));
+    await waitUntil(() => sum(calls, 'sham') >= 2, 'second sham to be reported');
+    await idleEmissions(calls, 3);
+    assert.equal(sum(calls, 'sham'), 2, 'each hit reported exactly once overall');
+    assert.ok(
+      calls.every((c) => c.sham <= 1),
+      'no window carries over a prior window\'s count',
+    );
+  } finally {
+    auth.close();
+  }
+});
+
+test('onSuppressionWindow: rate-limit counter resets after each emission', async () => {
+  // Same emission-synchronised shape as the sham test above: the cap hit
+  // must be reported in exactly one window, never re-counted afterwards.
+  const calls = [];
+  const auth = newAuth({
+    openRegistration: true,
+    maxLoginRequestsPerIpPerHour: 1,
+    onSuppressionWindow: (p) => calls.push(p),
+    suppressionWindowMs: 40,
+  });
+  try {
+    await postLogin(auth, formBody({ email: 'first@example.com' }));
+    await postLogin(auth, formBody({ email: 'second@example.com' })); // hits the cap
+    await waitUntil(() => sum(calls, 'rateLimited') >= 1, 'rate-limit hit to be reported');
+    await idleEmissions(calls, 3); // would re-report the hit if the reset were broken
+    assert.equal(sum(calls, 'rateLimited'), 1, 'cap hit reported exactly once');
+    assert.ok(
+      calls.every((c) => c.rateLimited <= 1),
+      'no window carries over a prior window\'s rate-limit count',
+    );
+  } finally {
+    auth.close();
+  }
 });
 
 test('onSuppressionWindow: rate-limit + sham co-fire when create_ip cap forces fall-through', async () => {
@@ -226,8 +279,8 @@ test('onSuppressionWindow: rate-limit + sham co-fire when create_ip cap forces f
   assert.ok(calls.length >= 1);
   // The second request should have hit BOTH the create_ip rate-limit
   // (counted 1) AND the sham branch (counted 1).
-  assert.equal(calls[0].rateLimited, 1);
-  assert.equal(calls[0].sham, 1);
+  assert.equal(sum(calls, 'rateLimited'), 1);
+  assert.equal(sum(calls, 'sham'), 1);
   auth.close();
 });
 
@@ -248,10 +301,10 @@ test('onSuppressionWindow: per-handle token cap rotation counts as rate-limited'
   await postLogin(auth, formBody({ email: REGISTERED }));
   await sleep(120);
   assert.ok(calls.length >= 1);
-  assert.equal(calls[0].rateLimited, 1, 'third request should rotate (count as rate-limited)');
+  assert.equal(sum(calls, 'rateLimited'), 1, 'third request should rotate (count as rate-limited)');
   // sham=0 because the email is "registered" (open-reg first-hit
   // created the handle on attempt #1)
-  assert.equal(calls[0].sham, 0);
+  assert.equal(sum(calls, 'sham'), 0);
   auth.close();
 });
 
