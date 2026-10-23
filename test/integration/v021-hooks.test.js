@@ -140,6 +140,11 @@ test('onTransportFailure: fires on SMTP rejection', async () => {
 
 // --- onSuppressionWindow ----------------------------------------------------
 
+// The window timer starts at construction, not at the first request, so
+// sequential requests can straddle a tick. Counters reset per tick, so
+// the total across all emissions is conserved; assert on that.
+const sum = (calls, k) => calls.reduce((n, c) => n + c[k], 0);
+
 test('onSuppressionWindow: aggregates sham hits across the window', async () => {
   const calls = [];
   const auth = newAuth({
@@ -152,10 +157,10 @@ test('onSuppressionWindow: aggregates sham hits across the window', async () => 
   await postLogin(auth, formBody({ email: 'c@example.com' }));
   // Wait for at least one window emission
   await sleep(120);
-  // First emission should report sham=3
+  // Total across emissions should report sham=3
   assert.ok(calls.length >= 1, 'expected at least one window emission');
-  assert.equal(calls[0].sham, 3);
-  assert.equal(calls[0].rateLimited, 0);
+  assert.equal(sum(calls, 'sham'), 3);
+  assert.equal(sum(calls, 'rateLimited'), 0);
   assert.equal(calls[0].windowMs, 80);
   auth.close();
 });
@@ -174,7 +179,7 @@ test('onSuppressionWindow: aggregates rate-limit hits (login_ip cap)', async () 
   await postLogin(auth, formBody({ email: 'c@example.com' }));
   await sleep(120);
   assert.ok(calls.length >= 1);
-  assert.equal(calls[0].rateLimited, 1, 'expected one rate-limit hit on the third request');
+  assert.equal(sum(calls, 'rateLimited'), 1, 'expected one rate-limit hit on the third request');
   auth.close();
 });
 
@@ -226,8 +231,8 @@ test('onSuppressionWindow: rate-limit + sham co-fire when create_ip cap forces f
   assert.ok(calls.length >= 1);
   // The second request should have hit BOTH the create_ip rate-limit
   // (counted 1) AND the sham branch (counted 1).
-  assert.equal(calls[0].rateLimited, 1);
-  assert.equal(calls[0].sham, 1);
+  assert.equal(sum(calls, 'rateLimited'), 1);
+  assert.equal(sum(calls, 'sham'), 1);
   auth.close();
 });
 
@@ -248,10 +253,10 @@ test('onSuppressionWindow: per-handle token cap rotation counts as rate-limited'
   await postLogin(auth, formBody({ email: REGISTERED }));
   await sleep(120);
   assert.ok(calls.length >= 1);
-  assert.equal(calls[0].rateLimited, 1, 'third request should rotate (count as rate-limited)');
+  assert.equal(sum(calls, 'rateLimited'), 1, 'third request should rotate (count as rate-limited)');
   // sham=0 because the email is "registered" (open-reg first-hit
   // created the handle on attempt #1)
-  assert.equal(calls[0].sham, 0);
+  assert.equal(sum(calls, 'sham'), 0);
   auth.close();
 });
 
