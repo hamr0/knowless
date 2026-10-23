@@ -574,8 +574,9 @@ Step 8 — Per-handle token cap with eviction
 Step 9 — Issue token (real or sham)
   token = issueToken()
   if exists or is_creating:
-    if is_creating:
-      store.upsertHandle(handle)
+    # No upsertHandle here: the handle row is created at first redemption
+    # (callback -> upsertLastLogin), so an unredeemed address stays "new"
+    # and keeps counting against the create cap.
     store.insertToken(token.hash, handle,
                       expires_at = now + tokenTtlMs,
                       next_url = next_validated,

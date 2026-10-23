@@ -624,7 +624,11 @@ const auth = knowless({ ..., openRegistration: true });
 ```
 
 Note that open registration adds a per-IP cap on new handles
-(default 3/hour) to mitigate signup spam.
+(default 3/hour) to mitigate signup spam. The handle row is created
+when the link is first redeemed, not when it is sent, so an address
+that has never redeemed a link counts as "new" on every request and
+the cap keeps applying to it. `store.handleExists()` is false until
+first redemption.
 
 ### Step 6: Use sessions in your app — `auth.handleFromRequest`
 
@@ -994,13 +998,13 @@ Full options table:
 | `logoutPath` | no | `/logout` | Logout endpoint. |
 | `smtpHost` | no | `localhost` | MTA host. |
 | `smtpPort` | no | `25` | MTA port. |
-| `openRegistration` | no | `false` | Allow new-handle creation on first email. |
+| `openRegistration` | no | `false` | Allow new-handle creation on first email (the row is written at first redemption, not at send). |
 | `subject` | no | `'Sign in'` | Mail subject. ASCII, ≤60 chars. |
 | `confirmationMessage` | no | (default with `{email}` placeholder) | Shown after submission. |
 | `includeLastLoginInEmail` | no | `true` | Append "Last sign-in" line for compromise hint. |
 | `maxActiveTokensPerHandle` | no | `5` | Per-handle cap; 0 disables. |
 | `maxLoginRequestsPerIpPerHour` | no | `30` | Per-IP login cap; 0 disables. |
-| `maxNewHandlesPerIpPerHour` | no | `3` | Per-IP creation cap (open-reg only); 0 disables. |
+| `maxNewHandlesPerIpPerHour` | no | `3` | Per-IP cap on sends to never-redeemed addresses (open-reg only); 0 disables. |
 | `honeypotFieldName` | no | `website` | Hidden form field name. |
 | `trustedProxies` | no | `['127.0.0.1', '::1']` | IPs allowed to set `X-Forwarded-For`. |
 | `shamRecipient` | no | `null@knowless.invalid` | Where sham mail goes (your MTA must discard it). |

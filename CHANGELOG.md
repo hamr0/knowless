@@ -7,6 +7,12 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Security: with `openRegistration: true`, the handle row is now created at first redemption, not when the link is sent.** Previously `runSendLink` inserted the handle at send time, so every address an attacker typed became an "existing" handle. Later sends to it skipped the `maxNewHandlesPerIpPerHour` create cap and were bound only by `maxLoginRequestsPerIpPerHour` (30/hr). In production a contact-form bot seeded ~2,281 unredeemed handles this way and then mailed them repeatedly. No address now gets existing-handle treatment until it has redeemed a magic link; an unredeemed address stays "new" on every request, so `maxNewHandlesPerIpPerHour` effectively bounds sends to never-redeemed addresses per IP. The row is created by the callback's `upsertLastLogin`. Consequence: `store.handleExists()` is false until first redemption. `openRegistration: false` and the pre-seeded allowlist recipe are unchanged; no option or API change.
+
+  **Cleanup for open-registration adopters:** purge rows seeded before this fix with `DELETE FROM handles WHERE last_login_at IS NULL`. Do NOT run this if you pre-seed an allowlist: those handles also have `last_login_at` NULL until their first login.
+
 ## [1.3.5] — 2026-10-23
 
 ### Security
