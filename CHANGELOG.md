@@ -17,7 +17,7 @@ Versioning is [SemVer](https://semver.org/).
 
   | Advisory | Issue | Reachable via knowless? |
   |---|---|---|
-  | GHSA-2x7j-588g-ccc2, GHSA-v53p-9fqp-m79j | addressparser quadratic-time DoS | No — the only parsed address is ≤254 chars, pre-validated |
+  | GHSA-2x7j-588g-ccc2, GHSA-v53p-9fqp-m79j | addressparser quadratic-time DoS | No — the only attacker-supplied address is `to` (≤254 chars, pre-validated by `normalize()`); `from` is operator config, passed as `envelope.from` after `createMailer` rejects only `<`, `>`, CR/LF |
   | GHSA-cc9r-2j5m-2m83 | recipient-domain bypass via RFC 5322 comment mis-parsing | No — `EMAIL_REGEX` rejects `(`, `)`, quotes, `<>`, `,`, `;`, `\` before nodemailer sees the address, so validator and parser cannot disagree |
   | GHSA-wmmp-3585-3rmp | IDN/Punycode domain allow-list bypass | No — knowless configures no nodemailer allow-list |
   | GHSA-8vvx-rff5-p5rq | nested recipient arrays → stack exhaustion | No — `to` is always `[string]` |
@@ -1613,7 +1613,8 @@ Two primary audiences (PRD §4):
 
 Apache 2.0 with NOTICE preservation. See `LICENSE` and `NOTICE`.
 
-[Unreleased]: https://github.com/hamr0/knowless/compare/v1.3.4...HEAD
+[Unreleased]: https://github.com/hamr0/knowless/compare/v1.3.5...HEAD
+[1.3.5]: https://github.com/hamr0/knowless/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/hamr0/knowless/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/hamr0/knowless/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/hamr0/knowless/compare/v1.3.1...v1.3.2
