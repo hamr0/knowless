@@ -395,7 +395,11 @@ export function createHandlers({ store, mailer, config, events }) {
     let isSham;
 
     if (exists || isCreating) {
-      if (isCreating) store.upsertHandle(handle);
+      // No handle row is written here, even when isCreating. The row is
+      // created at first redemption (callback -> upsertLastLogin). Writing
+      // it at send would turn every address an attacker types into an
+      // "existing" handle, exempt from the create_ip cap on later sends.
+      // An unredeemed address stays "new" on every request.
       isSham = false;
       toAddress = emailNorm;
       if (cfg.includeLastLoginInEmail) {
