@@ -1,12 +1,12 @@
 # knowless — Implementation task list
 
-**Source documents:** [`docs/01-product/PRD.md`](../01-product/PRD.md), [`docs/02-design/SPEC.md`](../02-design/SPEC.md)
+**Source documents:** [`docs/product/PRD.md`](../../product/PRD.md), [`docs/product/SPEC.md`](../../product/SPEC.md)
 
 ## Status (current)
 
 > **Phases 0 through 7 are shipped in v0.1.0 → v0.1.8.** The unchecked
 > boxes below are the original implementation plan, preserved as a
-> historical reference. For shipped scope, read [`CHANGELOG.md`](../../CHANGELOG.md).
+> historical reference. For shipped scope, read [`CHANGELOG.md`](../../../CHANGELOG.md).
 > For audit-finding status, read PRD §17.3.
 
 **addypin integration: DONE.** addypin merged its `try/knowless`

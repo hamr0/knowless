@@ -3,7 +3,7 @@
 > The "is this for me, and how do I wire it up" doc. For the dense
 > AI-agent reference, see [`knowless.context.md`](knowless.context.md).
 > For the product philosophy, see
-> [`docs/01-product/PRD.md`](docs/01-product/PRD.md).
+> [`docs/product/PRD.md`](docs/product/PRD.md).
 
 ## Read this first: knowless walks away at v1.0.0
 
@@ -1096,7 +1096,7 @@ set correctly. Test with [mail-tester.com](https://www.mail-tester.com/).
 ### Can I use Mailgun / Postmark / SES instead of localhost Postfix?
 
 No, by design. The library refuses remote SMTP and vendor APIs.
-The reasoning is in [`docs/01-product/PRD.md`](docs/01-product/PRD.md) §16.2: a
+The reasoning is in [`docs/product/PRD.md`](docs/product/PRD.md) §16.2: a
 vendor relationship invites the operator to use the same mailer
 for non-auth mail (welcome emails, digests), which contradicts
 the philosophy. If you need a vendor mailer, you're not the
@@ -1112,7 +1112,7 @@ once, back it up safely, never expose it.
 ### Can I customise the login HTML?
 
 The built-in form is hardcoded. Operators wanting branding fork the
-project. Rationale in [`docs/01-product/PRD.md`](docs/01-product/PRD.md) §16.12: templating
+project. Rationale in [`docs/product/PRD.md`](docs/product/PRD.md) §16.12: templating
 is a slope ("let me put my logo" → "let me theme the page" →
 "let me embed a JS framework"). The hardcoded form refuses to drift.
 
@@ -1220,7 +1220,7 @@ and v1.x carries no numeric guarantee across upgrades.
 
 For multi-process or multi-node deployments, implement the store
 interface against Postgres, Redis, or any other backend. The interface
-is documented in [`docs/02-design/SPEC.md`](docs/02-design/SPEC.md) §13.
+is documented in [`docs/product/SPEC.md`](docs/product/SPEC.md) §13.
 
 ### How do I see what's in the store?
 
@@ -1231,7 +1231,7 @@ sqlite> SELECT count(*) FROM handles;
 sqlite> SELECT count(*) FROM sessions WHERE expires_at > unixepoch() * 1000;
 ```
 
-The schema is documented in [`docs/02-design/SPEC.md`](docs/02-design/SPEC.md) §6.
+The schema is documented in [`docs/product/SPEC.md`](docs/product/SPEC.md) §6.
 
 ## Troubleshooting
 

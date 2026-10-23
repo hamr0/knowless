@@ -1,7 +1,7 @@
 # knowless — Specification (SPEC.md)
 
 **Status:** Draft v0.2 (post-PRD-v0.13, post-Phase-5)
-**Companion:** [`docs/01-product/PRD.md`](../01-product/PRD.md)
+**Companion:** [`docs/product/PRD.md`](PRD.md)
 
 This document pins the wire formats, byte layouts, and algorithms
 that the PRD references but does not define. Where the PRD says

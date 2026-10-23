@@ -31,8 +31,8 @@ Two integration paths:
    env vars; see [`OPS.md`](OPS.md) for the full deployment guide.
 
 This document is the dense reference. For the why, see
-`docs/01-product/PRD.md`. For the wire formats, see
-`docs/02-design/SPEC.md`. For an adopter walkthrough, see `GUIDE.md`.
+`docs/product/PRD.md`. For the wire formats, see
+`docs/product/SPEC.md`. For an adopter walkthrough, see `GUIDE.md`.
 
 ## What knowless is and is not
 

@@ -700,9 +700,9 @@ commit it.
 
 ## 13. Where things are documented
 
-- **PRD** (`docs/01-product/PRD.md`) — what the library does and
+- **PRD** (`docs/product/PRD.md`) — what the library does and
   doesn't do, threat model, NO-GO list
-- **SPEC** (`docs/02-design/SPEC.md`) — wire formats, exact flows,
+- **SPEC** (`docs/product/SPEC.md`) — wire formats, exact flows,
   schema
 - **GUIDE.md** — application-developer integration in library mode
 - **README.md** — short orientation

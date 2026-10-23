@@ -84,7 +84,7 @@ relitigate without a fundamentally new argument.**
 
 ## Where deeper rationale lives
 
-- **`docs/01-product/PRD.md` §16 — Decisions log.** 21 entries
+- **`docs/product/PRD.md` §16 — Decisions log.** 21 entries
   covering every contested decision. Internal/repo-only — not
   shipped via npm, not linked from `README.md`. Load when triage
   above doesn't resolve a request.
@@ -92,9 +92,9 @@ relitigate without a fundamentally new argument.**
   Has "What's NOT in knowless, and why" § for the three agent-
   pushback cases (disposable-domain blocking, app-tenure, hashcash).
   Ships via npm.
-- **`docs/02-design/SPEC.md`** — implementation contracts (FR-N
+- **`docs/product/SPEC.md`** — implementation contracts (FR-N
   functional requirements, AF-N audit findings).
-- **`docs/03-tasks/TASKS.md`** — task ledger.
+- **`docs/logs/03-tasks/TASKS.md`** — task ledger.
 - **`.claude/memory/AGENT_RULES.md`** — cross-project dev/test
   standards (POC-first, dependency hierarchy, lightweight-over-
   complex, open-source-only).
@@ -135,3 +135,8 @@ Consult when building something new or adding a feature — a standards guide, n
 context like MEMORY.md above:
 .claude/remember/AGENT_RULES.md
 <!-- AGENT_RULES:END -->
+
+<!-- DOCS_INDEX:START -->
+Docs map: `docs/index.md` — every doc in this project, with line counts.
+Search this corpus instead of reading it whole: `/docs-builder search <query words>`
+<!-- DOCS_INDEX:END -->
