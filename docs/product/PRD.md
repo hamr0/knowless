@@ -7,20 +7,20 @@ description: "Entry page for the knowless PRD: summary, thesis, commitments, dep
 
 ## Summary
 
-`knowless` is a small, opinionated, full-stack passwordless authentication library for Node.js services that don't need to contact their users for anything other than authentication itself. (docs/archive/PRD.md:228-232)
+`knowless` is a small, opinionated, full-stack passwordless authentication library for Node.js services that don't need to contact their users for anything other than authentication itself. (docs/archive/PRD.md:230-232)
 
-**Thesis.** Most services have accreted ten layers of auth tooling where they need two. Magic links and a session cookie have always been sufficient for the kinds of services this library serves, and `knowless` is a return to that simpler answer, with the discipline to refuse the layers that don't earn their place. (docs/archive/PRD.md:233-238)
+**Thesis.** Most services have accreted ten layers of auth tooling where they need two. Magic links and a session cookie have always been sufficient for the kinds of services this library serves, and `knowless` is a return to that simpler answer, with the discipline to refuse the layers that don't earn their place. (docs/archive/PRD.md:234-238)
 
 ### What it commits to
 
-- Stores no plaintext email, ever: email becomes a salted hash on the way in and is discarded. (docs/archive/PRD.md:240-242)
-- Sends no email except the magic link (no welcome message, digest, or notification), by API shape. (docs/archive/PRD.md:243-244)
-- Self-hostable end to end, with no vendor relationships and no telemetry. (docs/archive/PRD.md:245-245)
-- Walks away at v1.0.0, with maintenance mode after that. (docs/archive/PRD.md:246-246)
+- Stores no plaintext email, ever: email becomes a salted hash on the way in and is discarded. (docs/archive/PRD.md:242-243)
+- Sends no email except the magic link (no welcome message, digest, or notification), by API shape. (docs/archive/PRD.md:244-245)
+- Self-hostable end to end, with no vendor relationships and no telemetry. (docs/archive/PRD.md:246-246)
+- Walks away at v1.0.0, with maintenance mode after that. (docs/archive/PRD.md:247-247)
 
 ### Two deployment modes, one codebase
 
-- **Library mode:** import into a Node app and mount the handlers; six lines of operator code. (docs/archive/PRD.md:248-252)
+- **Library mode:** import into a Node app and mount the handlers; six lines of operator code. (docs/archive/PRD.md:251-252)
 - **Standalone server mode:** run `npx knowless-server` to spin up an auth-only HTTP service that integrates with reverse proxies (Caddy, nginx, Traefik) via forward-auth; zero lines of operator code. (docs/archive/PRD.md:253-257)
 
 ### Audience

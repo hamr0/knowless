@@ -297,9 +297,9 @@ clarification on the ASCII-only email body.
 
 ### Documented
 
-- `docs/01-product/PRD.md` §16.24 — recorded why knowless ships generated
+- `docs/wiki/decisions-log.md` §16.24 — recorded why knowless ships generated
   types and uses `strictNullChecks`, not full `strict`.
-- `docs/01-product/PRD.md` §16.23 — recorded why the email body is
+- `docs/wiki/decisions-log.md` §16.23 — recorded why the email body is
   ASCII-only as a security invariant, not just an encoding choice.
   7-bit ASCII kills bidi/RTL override (U+202E), homoglyph/confusable
   spoofing (Cyrillic а vs Latin a), and zero-width injection in the most
@@ -357,7 +357,7 @@ unnoticed. The fix fails fast at startup, mirroring the existing
   `fromName`, never `Name <addr>`), the exact mistake that produced
   this bug. The contract was documented since v0.2.3, but not at the
   spot adopters copy from.
-- `docs/01-product/PRD.md` §16.22 — recorded the decision: `from` is
+- `docs/wiki/decisions-log.md` §16.22 — recorded the decision: `from` is
   validated for wire-safety (`<>`, CR/LF), not address validity. Sender
   shape is the MTA's job; recipient validity is `normalize()` + the
   magic-link round-trip. Keeps the boundary (and the rejected `"`
@@ -385,7 +385,7 @@ already correct and stays unchanged.
   header in every Caddy / nginx / Traefik recipe from
   `X-Knowless-Handle` to `X-User-Handle` (6 references, including the
   nginx `$upstream_http_x_user_handle` variable). Now matches
-  `src/handlers.js`, `docs/02-design/SPEC.md` §9.2, and the
+  `src/handlers.js`, `docs/product/SPEC.md` §9.2, and the
   `knowless.context.md` API table.
 
 ### Documented
@@ -396,7 +396,7 @@ already correct and stays unchanged.
   upstream should reject the header from any source but the proxy.
   This is the load-bearing forward-auth invariant; making it explicit
   guards against a future name drift re-introducing the gap.
-- `OPS.md` §1, `docs/01-product/PRD.md` §10.1 — corrected the runtime
+- `OPS.md` §1, `docs/wiki/architecture-ops-threats.md` §10.1 — corrected the runtime
   floor from "Node.js ≥ 20" to "≥ 22.5". The `node:sqlite`
   (`DatabaseSync`) import hard-crashes below 22.5; `engines.node`,
   README, `knowless.context.md`, GUIDE, and PRD §16.4 already stated
@@ -430,7 +430,7 @@ defense. No code changes.
   provides a ~15-line adopter recipe using the `next_url`
   round-trip + a state cookie. Mechanism in adopter, no library
   change.
-- `docs/01-product/PRD.md` §16.21 — recorded the same-browser-
+- `docs/wiki/decisions-log.md` §16.21 — recorded the same-browser-
   binding decision in the §16 decisions log so the doctrine
   survives the next agent who proposes it. Cross-references
   §16.14 (honest threat model) as the load-bearing precedent.
@@ -1489,7 +1489,6 @@ The published `0.1.0` does not have these. Adopters who installed
 `0.1.0` should `npm update knowless` to pick up the CSRF defense
 and the localhost-dev-friendly cookieSecure option.
 
-[0.1.1]: https://github.com/hamr0/knowless/releases/tag/v0.1.1
 
 ## [0.1.0] — 2026-04-28
 
@@ -1563,10 +1562,10 @@ production-grounded; standalone-server deployment shape ships in 0.2.0.
 
 ### Added — docs
 
-- `docs/01-product/PRD.md` (v0.12) — product requirements.
-- `docs/02-design/SPEC.md` (v0.1) — wire formats, byte layouts,
+- `docs/product/PRD.md` (v0.12) — product requirements.
+- `docs/product/SPEC.md` (v0.1) — wire formats, byte layouts,
   algorithms.
-- `docs/03-tasks/TASKS.md` (v0.1) — 8-phase implementation plan.
+- `docs/logs/03-tasks/TASKS.md` (v0.1) — 8-phase implementation plan.
 - `README.md`, `GUIDE.md`, `knowless.context.md`, `CHANGELOG.md`.
 
 ### Tests
@@ -1621,4 +1620,13 @@ Apache 2.0 with NOTICE preservation. See `LICENSE` and `NOTICE`.
 [1.3.2]: https://github.com/hamr0/knowless/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/hamr0/knowless/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/hamr0/knowless/compare/v1.2.0...v1.3.0
-[0.1.0]: https://github.com/hamr0/knowless/releases/tag/v0.1.0
+[1.2.0]: https://github.com/hamr0/knowless/compare/v1.1.9...v1.2.0
+[1.1.9]: https://github.com/hamr0/knowless/compare/v1.1.8...v1.1.9
+[1.1.8]: https://github.com/hamr0/knowless/compare/v1.1.7...v1.1.8
+[1.1.7]: https://github.com/hamr0/knowless/compare/v1.1.6...v1.1.7
+[1.1.6]: https://github.com/hamr0/knowless/compare/v1.1.5...v1.1.6
+[1.1.5]: https://github.com/hamr0/knowless/releases/tag/v1.1.5
+[1.1.2]: https://github.com/hamr0/knowless/compare/v1.1.1...v1.1.2
+[1.1.1]: https://github.com/hamr0/knowless/compare/v1.1.0...v1.1.1
+[1.1.0]: https://github.com/hamr0/knowless/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/hamr0/knowless/releases/tag/v1.0.0

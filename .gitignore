@@ -32,3 +32,7 @@ node_modules/
 # chasing each new scratch dir with its own line.
 .*/
 !.github/
+
+# Local env files (secrets) — never commit
+.env
+.env.*

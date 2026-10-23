@@ -95,7 +95,7 @@ relitigate without a fundamentally new argument.**
 - **`docs/product/SPEC.md`** — implementation contracts (FR-N
   functional requirements, AF-N audit findings).
 - **`docs/logs/03-tasks/TASKS.md`** — task ledger.
-- **`.claude/memory/AGENT_RULES.md`** — cross-project dev/test
+- **`.claude/remember/AGENT_RULES.md`** — cross-project dev/test
   standards (POC-first, dependency hierarchy, lightweight-over-
   complex, open-source-only).
 
@@ -112,7 +112,7 @@ respecting them.
 
 ## Code standards (condensed)
 
-For full standards see `.claude/memory/AGENT_RULES.md`.
+For full standards see `.claude/remember/AGENT_RULES.md`.
 
 - **POC first.** Validate logic with a ~15-min proof-of-concept
   before building. Cover happy path + common edges. POC works →
