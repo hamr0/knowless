@@ -84,8 +84,8 @@ relitigate without a fundamentally new argument.**
 
 ## Where deeper rationale lives
 
-- **`docs/product/PRD.md` §16 — Decisions log.** 21 entries
-  covering every contested decision. Internal/repo-only — not
+- **`docs/wiki/decisions-log.md` (PRD §16) — Decisions log.** 25
+  entries covering every contested decision. Internal/repo-only — not
   shipped via npm, not linked from `README.md`. Load when triage
   above doesn't resolve a request.
 - **`knowless.context.md`** — adopter-facing single-file reference.

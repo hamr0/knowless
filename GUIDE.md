@@ -1096,7 +1096,7 @@ set correctly. Test with [mail-tester.com](https://www.mail-tester.com/).
 ### Can I use Mailgun / Postmark / SES instead of localhost Postfix?
 
 No, by design. The library refuses remote SMTP and vendor APIs.
-The reasoning is in [`docs/product/PRD.md`](docs/product/PRD.md) §16.2: a
+The reasoning is in [`docs/wiki/decisions-log.md`](docs/wiki/decisions-log.md) §16.2: a
 vendor relationship invites the operator to use the same mailer
 for non-auth mail (welcome emails, digests), which contradicts
 the philosophy. If you need a vendor mailer, you're not the
@@ -1112,7 +1112,7 @@ once, back it up safely, never expose it.
 ### Can I customise the login HTML?
 
 The built-in form is hardcoded. Operators wanting branding fork the
-project. Rationale in [`docs/product/PRD.md`](docs/product/PRD.md) §16.12: templating
+project. Rationale in [`docs/wiki/decisions-log.md`](docs/wiki/decisions-log.md) §16.12: templating
 is a slope ("let me put my logo" → "let me theme the page" →
 "let me embed a JS framework"). The hardcoded form refuses to drift.
 

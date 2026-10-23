@@ -19,11 +19,11 @@ place. Ops content currently lives in the SPEC pending OPS.md.
 1. **What is knowless and who is it for?** →
    [`01-product/PRD.md`](product/PRD.md) §1–§5.
 2. **What does it deliberately refuse to do?** →
-   [`01-product/PRD.md`](product/PRD.md) §14 (the NO-GO table)
+   [`wiki/decisions-log.md`](wiki/decisions-log.md) §14 (the NO-GO table)
    and §15 (sibling project candidates).
 3. **How is it actually built — the wire formats, algorithms, and
    the sham-work pattern?** → [`02-design/SPEC.md`](product/SPEC.md).
-4. **Why was X decided?** → [`01-product/PRD.md`](product/PRD.md) §16
+4. **Why was X decided?** → [`wiki/decisions-log.md`](wiki/decisions-log.md) §16
    (decisions log). When PRD and SPEC disagree: PRD wins on intent,
    SPEC wins on mechanism.
 
