@@ -7,6 +7,29 @@ Versioning is [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.5] — 2026-10-23
+
+### Security
+
+- **`nodemailer` bumped from `^9.0.3` to `^10.2.1`**, clearing eight advisories against `nodemailer <=10.0.9` (fixed in 10.0.10). Reported by addypin's `npm audit --omit=dev`. Same posture as [1.3.3]: **none are reachable through knowless's supported API**, but an unreachable advisory still fails every adopter's audit, so the floor moves.
+
+  knowless's entire nodemailer surface is one localhost transport (`auth: undefined`, `ignoreTLS`, no DKIM, no pool) and one call, `sendMail({ envelope: { from, to: [to] }, raw })`, where `raw` is a string from `composeRaw()` and `to` has already passed `normalize()` (≤254 chars, ASCII, `EMAIL_REGEX`).
+
+  | Advisory | Issue | Reachable via knowless? |
+  |---|---|---|
+  | GHSA-2x7j-588g-ccc2, GHSA-v53p-9fqp-m79j | addressparser quadratic-time DoS | No — the only parsed address is ≤254 chars, pre-validated |
+  | GHSA-cc9r-2j5m-2m83 | recipient-domain bypass via RFC 5322 comment mis-parsing | No — `EMAIL_REGEX` rejects `(`, `)`, quotes, `<>`, `,`, `;`, `\` before nodemailer sees the address, so validator and parser cannot disagree |
+  | GHSA-wmmp-3585-3rmp | IDN/Punycode domain allow-list bypass | No — knowless configures no nodemailer allow-list |
+  | GHSA-8vvx-rff5-p5rq | nested recipient arrays → stack exhaustion | No — `to` is always `[string]` |
+  | GHSA-6vj9-mwq6-2f5v | process-global DNS cache reuses TLS `servername` | No — one transport, no TLS, no credentials |
+  | GHSA-39m8-27wv-hr27 | DKIM header-unfolding DoS | No — nodemailer DKIM signing is never configured |
+  | GHSA-8m3c-c648-2xjj | `resolveContent()` file/url access bypass | No — `raw` is a string, never `{path}` / `{href}` |
+
+  nodemailer 10 is a **major**: its one declared break is Node ≥20 (knowless's floor is 22.5). It is also a TypeScript rewrite with dual ESM/CJS builds; verified that knowless's default `import nodemailer` still exposes `createTransport`, and that `require('nodemailer/lib/addressparser')` still resolves (via the `exports` map) to a callable function — the path mailauth/mailparser load in adopter trees. `src/mailer.js` unchanged. Suite 256 pass / 0 fail / 1 docker-skip; lint, typecheck, `build:types`, and `npm audit --omit=dev` (0 vulnerabilities) clean.
+
+  **If you pin `nodemailer` via `overrides`, raise it to `^10.2.1` in the same change** — otherwise it holds knowless back on 9.x and your audit stays red (see the note below). gitdone is in exactly this position.
+
+
 ### Added
 - **The publish workflow now fails when `package-lock.json`'s version drifts from `package.json`.** npm writes that field on install, so a release that bumps `package.json` without running one leaves it behind — and nothing caught it: `npm ci` fails when the lockfile's *dependency* entries disagree, but never checks the lockfile's copy of the project's own version. `scripts/check-lockfile.mjs` (`npm run check:lockfile`) compares both places npm writes it and runs in the publish workflow. No lockfile is not a failure.
 
@@ -32,7 +55,7 @@ Versioning is [SemVer](https://semver.org/).
   - *"It fails toward over-throttling, not bypass"* (PRD put it hardest: "a collision, not a spoof") — **only true in one of the two configs.** `determineSourceIp` trusts the *leftmost* `X-Forwarded-For` element, and Cloudflare **appends** the connecting IP to any `X-Forwarded-For` the client sent rather than replacing it. So an origin that appends or omits the directive leaves a client-forged element leftmost and the cap is **bypassed entirely** — the very direction the old text told operators to stop watching for. A CDN layers the collision *on top of* the spoof exposure; it does not replace it. The prescribed fix was already correct and is unchanged.
   - *"Upgrading to 1.3.4 is what arms it"* — **overstated.** The pre-1.3.4 race was check-before-await / increment-after-send, so only *concurrent* requests in a bucket slipped past; sequential ones still incremented and still bound. The caps were leaky under burst, not inert, so a miskeyed bucket was already biting. 1.3.4 makes enforcement reliable, so a wrong bucket bites *more consistently* — it sharpens the exposure rather than creating it. The remedy is to fix the edge, **not** to hold back the upgrade.
 
-- **`npm overrides` can silently hold the `nodemailer` floor down (re: [1.3.3]).** If you pin `nodemailer` via an `overrides` block in your own `package.json`, that override wins over knowless's `^9.0.3` dependency — so upgrading to 1.3.4 will *not* lift you off the vulnerable 8.x line, and `npm audit` will keep reporting the four advisories below. Raise the override to `^9.0.3` (or drop it). Neither current adopter has an override block; noting it so the next one doesn't lose an afternoon.
+- **`npm overrides` can silently hold the `nodemailer` floor down.** If you pin `nodemailer` via an `overrides` block in your own `package.json`, that override wins over knowless's own dependency range — so upgrading knowless will *not* lift you off a vulnerable line, and `npm audit` keeps reporting the advisories. Keep the override at or above knowless's floor (`^10.2.1` as of [1.3.5]), or drop it if nothing else needs it. gitdone hit this on the 1.3.4 upgrade: an override added to raise mailauth's transitive floor was silently holding knowless's down.
 
 ### Fixed
 

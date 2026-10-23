@@ -1,6 +1,6 @@
 {
   "name": "knowless",
-  "version": "1.3.4",
+  "version": "1.3.5",
   "description": "Small, opinionated, full-stack passwordless auth for Node.js services that don't need to email their users for anything but the sign-in link.",
   "type": "module",
   "main": "./src/index.js",
@@ -39,7 +39,7 @@
     "check:lockfile": "node scripts/check-lockfile.mjs"
   },
   "dependencies": {
-    "nodemailer": "^9.0.3"
+    "nodemailer": "^10.2.1"
   },
   "license": "Apache-2.0",
   "homepage": "https://github.com/hamr0/knowless",
