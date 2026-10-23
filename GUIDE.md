@@ -630,6 +630,13 @@ that has never redeemed a link counts as "new" on every request and
 the cap keeps applying to it. `store.handleExists()` is false until
 first redemption.
 
+The tradeoff: every resend to an unredeemed address spends the per-IP
+create budget. A legitimate user who requests their own link more than
+3 times in an hour from one IP, or several new users behind one
+NAT/office IP, get silent sham sends (no mail) until the window rolls
+over. Clicking any earlier link fixes it. If your user base is
+NAT-heavy, raise `maxNewHandlesPerIpPerHour`.
+
 ### Step 6: Use sessions in your app — `auth.handleFromRequest`
 
 After `/auth/callback` succeeds, the user has a session cookie. To

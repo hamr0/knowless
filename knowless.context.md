@@ -130,7 +130,7 @@ const auth = knowless({
   shamRecipient: 'null@knowless.invalid', // operator's MTA must discard this
 
   // --- Behavior ---
-  openRegistration: false,            // first-email-wins; handle row created at first redemption
+  openRegistration: false,            // true = first-email-wins (row created at first redemption); false = pre-seeded handles only
   includeLastLoginInEmail: true,      // append "Last sign-in: <ISO ts>" line
   confirmationMessage: 'Thanks. If {email} is registered, a link is on its way.',
   // ^ NOTE: the message is HTML-escaped before render (AF-6.5).

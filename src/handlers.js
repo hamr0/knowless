@@ -399,7 +399,9 @@ export function createHandlers({ store, mailer, config, events }) {
       // created at first redemption (callback -> upsertLastLogin). Writing
       // it at send would turn every address an attacker types into an
       // "existing" handle, exempt from the create_ip cap on later sends.
-      // An unredeemed address stays "new" on every request.
+      // An unredeemed address stays "new" on every request. Cost: each
+      // resend (or a shared NAT IP) spends create_ip budget until a link
+      // is clicked or the window rolls over.
       isSham = false;
       toAddress = emailNorm;
       if (cfg.includeLastLoginInEmail) {
