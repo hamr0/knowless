@@ -1209,7 +1209,7 @@ Defaults (all configurable at construction, no live tuning):
 | Option | Default | Scope |
 |---|---|---|
 | `maxLoginRequestsPerIpPerHour` | 30 | Per source IP |
-| `maxNewHandlesPerIpPerHour` | 3 | Per source IP (open-registration only) |
+| `maxNewHandlesPerIpPerHour` | 3 | Per source IP, sends to never-redeemed addresses (open-registration only) |
 | `maxActiveTokensPerHandle` | 5 | Per handle (unexpired, unused) |
 
 A rate-limited submission returns **202** with the same HTML body as a

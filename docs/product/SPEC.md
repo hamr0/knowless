@@ -218,7 +218,7 @@ verifyToken(raw: string) -> handle | null:
   if row.used_at is not null: return null      // replay
   if row.expires_at <= now(): return null      // expired
   store.markTokenUsed(hash, used_at=now())
-  store.upsertLastLogin(row.handle, now())
+  store.upsertLastLogin(row.handle, now())   // creates the handle row on first redemption (open registration)
   return row.handle
 ```
 
