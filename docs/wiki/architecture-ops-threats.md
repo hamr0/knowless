@@ -144,7 +144,7 @@ The section is deliberately specific about what is and is not defended, because 
 - Email-bombing a target: the per-handle limit caps concurrent active magic links (default 5, newest replaces oldest). (docs/archive/PRD.md:1559-1563)
 - Naive bot traffic: the honeypot field; bots that respect CSS hiding will not be caught. (docs/archive/PRD.md:1565-1568)
 - Mild high-volume floods: per-IP login limit (default 30/hour); serious abuse should also be limited at the reverse proxy (OPS.md). (docs/archive/PRD.md:1570-1573)
-- Account creation spam in open-registration mode: per-IP cap on new handles (default 3/hour). (docs/archive/PRD.md:1575-1577)
+- Account creation spam in open-registration mode: per-IP cap on new handles (default 3/hour); the handle row is created at first redemption, not at send, so an unredeemed address keeps counting against the cap. (docs/archive/PRD.md:1575-1577)
 
 **Defends partially against:**
 

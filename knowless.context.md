@@ -130,7 +130,7 @@ const auth = knowless({
   shamRecipient: 'null@knowless.invalid', // operator's MTA must discard this
 
   // --- Behavior ---
-  openRegistration: false,            // first-email-wins handle creation
+  openRegistration: false,            // true = first-email-wins (row created at first redemption); false = pre-seeded handles only
   includeLastLoginInEmail: true,      // append "Last sign-in: <ISO ts>" line
   confirmationMessage: 'Thanks. If {email} is registered, a link is on its way.',
   // ^ NOTE: the message is HTML-escaped before render (AF-6.5).
@@ -712,7 +712,11 @@ under that load is the perimeter's job, not the library's.
 1. **Closed-registration by default.** A handle must already
    exist before its email can request a link. Operators pre-seed
    via the re-exported `createStore` + `deriveHandle`, OR set
-   `openRegistration: true`.
+   `openRegistration: true`. With open registration the handle row
+   is written at first redemption, not at send, so an address that
+   never clicks stays "new" on every request and each send to it
+   counts against `maxNewHandlesPerIpPerHour`; `handleExists` is
+   false until the first click.
 
 2. **Postfix on localhost is required.** No remote SMTP, no
    Mailgun / Postmark / SES. The localhost requirement is

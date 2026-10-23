@@ -218,7 +218,7 @@ verifyToken(raw: string) -> handle | null:
   if row.used_at is not null: return null      // replay
   if row.expires_at <= now(): return null      // expired
   store.markTokenUsed(hash, used_at=now())
-  store.upsertLastLogin(row.handle, now())
+  store.upsertLastLogin(row.handle, now())   // creates the handle row on first redemption (open registration)
   return row.handle
 ```
 
@@ -574,8 +574,9 @@ Step 8 — Per-handle token cap with eviction
 Step 9 — Issue token (real or sham)
   token = issueToken()
   if exists or is_creating:
-    if is_creating:
-      store.upsertHandle(handle)
+    # No upsertHandle here: the handle row is created at first redemption
+    # (callback -> upsertLastLogin), so an unredeemed address stays "new"
+    # and keeps counting against the create cap.
     store.insertToken(token.hash, handle,
                       expires_at = now + tokenTtlMs,
                       next_url = next_validated,

@@ -75,6 +75,26 @@ test('handles: upsert + exists + delete clears all related rows', () => {
   s.close();
 });
 
+test('deleteHandle: erases a pending token when no handle row exists (erase-before-click)', () => {
+  // Handle rows are created at first redemption, so a pending token can
+  // exist for a handle with no row. Erasure must still remove it.
+  const s = fresh();
+  s.insertToken({
+    tokenHash: TOKEN_HASH_1,
+    handle: HANDLE_A,
+    expiresAt: Date.now() + 60_000,
+    isSham: false,
+  });
+  assert.equal(s.handleExists(HANDLE_A), false);
+  assert.notEqual(s.getToken(TOKEN_HASH_1), null);
+
+  s.deleteHandle(HANDLE_A);
+
+  assert.equal(s.getToken(TOKEN_HASH_1), null);
+  assert.equal(s.handleExists(HANDLE_A), false);
+  s.close();
+});
+
 test('tokens: insert + get + markUsed + replay-safe', () => {
   const s = fresh();
   s.upsertHandle(HANDLE_A);

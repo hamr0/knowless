@@ -829,13 +829,13 @@ test('startLogin: sham path — unknown email gets sham routing, same shape (AF-
   h.close();
 });
 
-test('startLogin: openRegistration auto-creates the handle (AF-7.3)', async () => {
+test('startLogin: openRegistration sends real mail, handle created at redemption (AF-7.3)', async () => {
   const h = newHarness({ openRegistration: true });
   const auth = { startLogin: h.handlers.startLogin };
   const result = await auth.startLogin({ email: 'fresh@example.com' });
   assert.equal(result.submitted, true);
-  // Handle now exists.
-  assert.equal(h.store.handleExists(result.handle), true);
+  // No row until the link is redeemed.
+  assert.equal(h.store.handleExists(result.handle), false);
   // Real mail (not sham).
   assert.equal(h.sentMail[0].envelope.to[0], 'fresh@example.com');
   h.close();

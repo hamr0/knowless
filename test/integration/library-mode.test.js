@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import nodemailer from 'nodemailer';
 import { knowless } from '../../src/index.js';
-import { fakeReq, fakeRes, formBody } from '../helpers/harness.js';
+import { fakeReq, fakeRes, formBody, extractToken } from '../helpers/harness.js';
+import { createStore } from '../../src/store.js';
 import { deriveHandle } from '../../src/handle.js';
 
 const SECRET = 'a'.repeat(64);
@@ -125,27 +126,35 @@ test('knowless: end-to-end through factory API', async () => {
   void handle;
 });
 
-test('knowless: deleteHandle removes handle + tokens + sessions', async () => {
-  const auth = newAuth({ openRegistration: true });
+test('knowless: deleteHandle before the link is clicked voids the token (erase-before-click)', async () => {
+  const store = createStore(':memory:');
+  const sent = [];
+  const transport = nodemailer.createTransport({ streamTransport: true, buffer: true });
+  const origSendMail = transport.sendMail.bind(transport);
+  transport.sendMail = async (opts) => {
+    const info = await origSendMail(opts);
+    sent.push(info.message.toString());
+    return info;
+  };
+  const auth = newAuth({ openRegistration: true, store, transportOverride: transport });
 
-  // Trigger a login to create handle + token
-  await auth.login(
-    fakeReq({
-      method: 'POST',
-      url: '/login',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: formBody({ email: 'alice@example.com' }),
-    }),
-    fakeRes(),
-  );
+  const { handle } = await auth.startLogin({ email: 'alice@example.com' });
+  assert.equal(sent.length, 1);
+  const token = extractToken(sent[0]);
+  assert.ok(token);
+  // Handle row is created at redemption, not at send.
+  assert.equal(store.handleExists(handle), false);
 
-  const handle = deriveHandle('alice@example.com', SECRET);
-  // Confirm creation succeeded by attempting another login
-  // (rate limit will not fire after only 1 prior request)
-  // and confirming the API call is callable
   auth.deleteHandle(handle);
   // Idempotent: second delete is a no-op
   auth.deleteHandle(handle);
+
+  const res = fakeRes();
+  await auth.callback(fakeReq({ method: 'GET', url: `/auth/callback?t=${token}` }), res);
+  assert.equal(res.statusCode, 302);
+  assert.equal(res._headers['location'], '/login');
+  assert.equal(res._setCookies.length, 0);
+  assert.equal(store.handleExists(handle), false);
 
   auth.close();
 });
